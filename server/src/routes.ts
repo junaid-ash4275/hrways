@@ -315,6 +315,137 @@ routes.put('/me/preferences', authGuard(), async (req, res, next) => {
   }
 });
 
+// HRW-EMP-1: Create employee (ADMIN/HR)
+routes.post('/employees', authGuard('HR'), async (req, res, next) => {
+  try {
+    const b = req.body || {};
+    const errors: string[] = [];
+    function reqStr(key: string, max: number) {
+      const v = (b[key] ?? '').toString().trim();
+      if (!v) errors.push(`${key} is required`);
+      else if (v.length > max) errors.push(`${key} too long (max ${max})`);
+      return v;
+    }
+    function optStr(key: string, max: number) {
+      const v = b[key];
+      if (v === undefined || v === null) return undefined;
+      const s = (v ?? '').toString().trim();
+      if (s.length > max) errors.push(`${key} too long (max ${max})`);
+      return s;
+    }
+    const employee_code = reqStr('employee_code', 20);
+    const name = reqStr('name', 120);
+    const email = reqStr('email', 160).toLowerCase();
+    const phone = optStr('phone', 30);
+    const department = optStr('department', 60);
+    const title = optStr('title', 60);
+    let status = (b['status'] ?? 'ACTIVE').toString().toUpperCase();
+    const joinDateStr = optStr('join_date', 20);
+    const rawBirth = b['birth_date'] ?? b['birthday'];
+
+    // Patterns
+    if (employee_code && !/^[A-Za-z0-9_\-]{3,20}$/.test(employee_code)) {
+      errors.push('employee_code must be 3-20 chars (letters, numbers, _ or -)');
+    }
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      errors.push('email is invalid');
+    }
+    if (phone && !/^[0-9+\-()\s]{6,}$/.test(phone)) {
+      errors.push('phone must contain at least 6 valid characters (digits, space, +, -, ())');
+    }
+    if (!['ACTIVE', 'INACTIVE'].includes(status)) {
+      errors.push('status must be ACTIVE or INACTIVE');
+    }
+    let join_date: string | null = null;
+    let birth_date: string | null = null;
+    if (joinDateStr) {
+      const m = /^\d{4}-\d{2}-\d{2}$/.exec(joinDateStr);
+      if (!m) errors.push('join_date must be YYYY-MM-DD');
+      else join_date = joinDateStr;
+    }
+    if (rawBirth !== undefined && rawBirth !== null) {
+      const s = String(rawBirth).trim();
+      if (s) {
+        const m2 = /^\d{4}-\d{2}-\d{2}$/.exec(s);
+        if (!m2) errors.push('birth_date must be YYYY-MM-DD');
+        else birth_date = s;
+      }
+    }
+
+    if (errors.length) {
+      return res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'Invalid employee data', details: errors } });
+    }
+
+    try {
+      const r = await pool.query(
+        `INSERT INTO employees (employee_code, name, email, phone, department, title, status, join_date, birth_date)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+         RETURNING id, employee_code, name, email, phone, department, title, status, join_date, birth_date, created_at`,
+        [employee_code, name, email, phone ?? null, department ?? null, title ?? null, status, join_date, birth_date]
+      );
+      return res.status(201).json(r.rows[0]);
+    } catch (e: any) {
+      if (e?.code === '23505') {
+        // unique_violation
+        const msg = (e?.detail || '').includes('employee_code')
+          ? 'employee_code already exists'
+          : (e?.detail || '').includes('email')
+          ? 'email already exists'
+          : 'duplicate value';
+        return res.status(409).json({ error: { code: 'CONFLICT', message: msg } });
+      }
+      throw e;
+    }
+  } catch (e) {
+    next(e);
+  }
+});
+
+// HRW-EMP-2: List employees (basic pagination)
+routes.get('/employees', authGuard('HR'), async (req, res, next) => {
+  try {
+    const page = Math.max(1, Number(req.query.page || 1) || 1);
+    const pageSizeRaw = Number(req.query.pageSize || 10) || 10;
+    const pageSize = Math.max(1, Math.min(100, pageSizeRaw));
+    const offset = (page - 1) * pageSize;
+
+    const q = (req.query.q || '').toString().trim();
+    const status = (req.query.status || '').toString().trim().toUpperCase();
+    const department = (req.query.department || '').toString().trim();
+
+    const where: string[] = [];
+    const params: any[] = [];
+    let pi = 1;
+    if (q) {
+      where.push(`(employee_code ILIKE $${pi} OR name ILIKE $${pi} OR email ILIKE $${pi} OR department ILIKE $${pi} OR title ILIKE $${pi})`);
+      params.push(`%${q}%`); pi++;
+    }
+    if (status && ['ACTIVE','INACTIVE'].includes(status)) {
+      where.push(`status = $${pi}`); params.push(status); pi++;
+    }
+    if (department) {
+      where.push(`department ILIKE $${pi}`); params.push(`%${department}%`); pi++;
+    }
+    const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+
+    const countRes = await pool.query(`SELECT COUNT(*)::int AS c FROM employees ${whereSql}`, params);
+    const total = countRes.rows[0]?.c || 0;
+
+    const listRes = await pool.query(
+      `SELECT id, employee_code, name, email, phone, department, title, status, join_date, birth_date, created_at
+         FROM employees
+         ${whereSql}
+        ORDER BY created_at ASC
+        LIMIT $${pi} OFFSET $${pi + 1}`,
+      [...params, pageSize, offset]
+    );
+
+    res.json({ data: listRes.rows, page, pageSize, total });
+  } catch (e) {
+    next(e);
+  }
+});
+
 // HRW-SET-1: Profile view/update
 // Allowed profile fields: fullName, phone, title (all optional strings)
 routes.get('/me/profile', authGuard(), async (req, res, next) => {
