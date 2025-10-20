@@ -3,10 +3,12 @@
 @tailwind utilities;
 
 :root {
-  color-scheme: light dark;
+  color-scheme: light;
+}
+.dark {
+  color-scheme: dark;
 }
 
 .brand-gradient {
   @apply bg-gradient-to-br from-emerald-500 via-teal-500 to-cyan-500;
 }
-

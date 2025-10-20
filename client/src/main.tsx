@@ -9,6 +9,9 @@ import Attendance from './pages/Attendance'
 import Meetings from './pages/Meetings'
 import Payroll from './pages/Payroll'
 import Settings from './pages/Settings'
+import SettingsProfile from './pages/settings/Profile'
+import SettingsPassword from './pages/settings/Password'
+import SettingsPreferences from './pages/settings/Preferences'
 import NotFound from './pages/NotFound'
 import Admin from './pages/Admin'
 import RequireRole from './shared/RequireRole'
@@ -33,7 +36,16 @@ const router = createBrowserRouter([
       { path: 'attendance', element: <Attendance /> },
       { path: 'meetings', element: <Meetings /> },
       { path: 'payroll', element: <Payroll /> },
-      { path: 'settings', element: <Settings /> },
+      {
+        path: 'settings',
+        element: <Settings />,
+        children: [
+          { index: true, element: <SettingsProfile /> },
+          { path: 'profile', element: <SettingsProfile /> },
+          { path: 'password', element: <SettingsPassword /> },
+          { path: 'preferences', element: <SettingsPreferences /> },
+        ],
+      },
       { path: 'admin', element: (
         <RequireRole role="ADMIN">
           <Admin />

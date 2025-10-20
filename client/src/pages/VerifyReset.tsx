@@ -34,7 +34,16 @@ export default function VerifyReset() {
         <h1 className="text-xl font-semibold mb-2">Verify code</h1>
         <p className="text-sm opacity-80 mb-4">Enter the 6‑digit code sent to your email.</p>
         <label className="block text-sm mb-1" htmlFor="email">Email</label>
-        <input id="email" type="email" className="w-full mb-3 px-3 py-2 rounded-lg border border-gray-300 dark:border-neutral-700 bg-transparent focus:outline-none focus:ring-2 focus:ring-emerald-500" value={email} onChange={(e) => setEmail(e.target.value)} required />
+        <input
+          id="email"
+          type="email"
+          className="w-full mb-3 px-3 py-2 rounded-lg border border-gray-300 dark:border-neutral-700 bg-gray-100 dark:bg-neutral-900 cursor-not-allowed focus:outline-none"
+          value={email}
+          readOnly
+          aria-readonly="true"
+          title="Email is locked for verification"
+          required
+        />
         <label className="block text-sm mb-1" htmlFor="otp">Code</label>
         <input id="otp" inputMode="numeric" pattern="[0-9]*" maxLength={6} className="w-full mb-4 px-3 py-2 rounded-lg border border-gray-300 dark:border-neutral-700 bg-transparent focus:outline-none focus:ring-2 focus:ring-emerald-500 tracking-widest text-center" value={otp} onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0,6))} required />
         {error && <div className="mb-2 text-sm text-red-600" role="alert">{error}</div>}
@@ -45,4 +54,3 @@ export default function VerifyReset() {
     </div>
   )
 }
-

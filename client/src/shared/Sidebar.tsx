@@ -1,8 +1,9 @@
-import { NavLink } from 'react-router-dom'
+import { NavLink, useLocation } from 'react-router-dom'
 
-import React, { useRef, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { useAuth } from '../auth/AuthContext'
 import { useUI } from '../ui/UIContext'
+import { useI18n } from '../i18n/i18n'
 import {
   HomeIcon,
   UsersIcon,
@@ -11,26 +12,44 @@ import {
   Cog6ToothIcon,
   ClipboardDocumentListIcon,
   ShieldCheckIcon,
+  ChevronDownIcon,
 } from '@heroicons/react/24/outline'
 import logoUrl from '../assets/hrways-logo.svg'
 
 type NavItem = { to: string; label: string; Icon: (props: React.SVGProps<SVGSVGElement>) => JSX.Element; adminOnly?: boolean }
-const nav: NavItem[] = [
+type NavGroup = { label: string; Icon: (props: React.SVGProps<SVGSVGElement>) => JSX.Element; children: NavItem[]; adminOnly?: boolean }
+const navBase: Array<NavItem | NavGroup> = [
   { to: '/', label: 'Dashboard', Icon: HomeIcon },
   { to: '/employees', label: 'Employees', Icon: UsersIcon },
   { to: '/attendance', label: 'Attendance', Icon: ClipboardDocumentListIcon },
   { to: '/meetings', label: 'Meetings', Icon: CalendarIcon },
   { to: '/payroll', label: 'Payroll', Icon: BriefcaseIcon },
-  { to: '/settings', label: 'Settings', Icon: Cog6ToothIcon },
+  {
+    label: 'Settings',
+    Icon: Cog6ToothIcon,
+    children: [
+      { to: '/settings/profile', label: 'Profile', Icon: Cog6ToothIcon },
+      { to: '/settings/password', label: 'Change Password', Icon: Cog6ToothIcon },
+      { to: '/settings/preferences', label: 'Preferences', Icon: Cog6ToothIcon },
+    ],
+  },
   { to: '/admin', label: 'Admin', Icon: ShieldCheckIcon, adminOnly: true },
 ]
 
 export default function Sidebar() {
   const { user } = useAuth()
   const { sidebarCollapsed } = useUI()
+  const { t } = useI18n()
   const [hovering, setHovering] = useState(false)
   const enterTimer = useRef<number | null>(null)
   const leaveTimer = useRef<number | null>(null)
+  const location = useLocation()
+  const [settingsOpen, setSettingsOpen] = useState<boolean>(() => location.pathname.startsWith('/settings'))
+  // Auto-open when navigating into /settings, but allow manual toggle to close while staying on route
+  useEffect(() => {
+    if (location.pathname.startsWith('/settings')) setSettingsOpen(true)
+    else setSettingsOpen(false)
+  }, [location.pathname])
 
   const handleEnter = () => {
     if (leaveTimer.current) window.clearTimeout(leaveTimer.current)
@@ -55,24 +74,73 @@ export default function Sidebar() {
       </div>
       <nav aria-label="Primary">
         <ul className="space-y-1">
-          {nav.filter(n => !n.adminOnly || user?.role === 'ADMIN').map((n) => (
-            <li key={n.to}>
-              <NavLink to={n.to} end={n.to === '/'}>
-                {({ isActive }) => (
-                  <div
-                    className={`group flex items-center gap-3 rounded-md px-3 py-2 transition
+          {navBase
+            .filter((n: any) => !n.adminOnly || user?.role === 'ADMIN')
+            .map((n: any, idx: number) => {
+              const isGroup = !!n.children
+              if (!isGroup) {
+                const item = n as NavItem
+                return (
+                  <li key={(item as any).to ?? idx}>
+                    <NavLink to={item.to} end={item.to === '/'}>
+                      {({ isActive }) => (
+                        <div
+                          className={`group flex items-center gap-3 rounded-md px-3 py-2 transition
+                            focus:outline-none focus:ring-2 focus:ring-emerald-500 border border-transparent
+                            ${isActive
+                              ? 'brand-gradient text-white shadow'
+                              : 'text-gray-700 dark:text-gray-200 hover:bg-emerald-50 dark:hover:bg-emerald-900/20'}`}
+                        >
+                          <item.Icon className={`h-5 w-5 ${isActive ? 'text-white opacity-100' : 'opacity-80 group-hover:opacity-100'}`} />
+                          {expanded && <span className="truncate">{t(item.label)}</span>}
+                        </div>
+                      )}
+                    </NavLink>
+                  </li>
+                )
+              }
+              const group = n as NavGroup
+              const open = settingsOpen
+              return (
+                <li key={`group-${idx}`}>
+                  <button
+                    type="button"
+                    aria-expanded={open}
+                    className={`w-full group flex items-center gap-3 rounded-md px-3 py-2 transition text-left
                       focus:outline-none focus:ring-2 focus:ring-emerald-500 border border-transparent
-                      ${isActive
-                        ? 'brand-gradient text-white shadow'
-                        : 'text-gray-700 dark:text-gray-200 hover:bg-emerald-50 dark:hover:bg-emerald-900/20'}`}
+                      ${open ? 'bg-emerald-50 dark:bg-emerald-900/20' : 'hover:bg-emerald-50 dark:hover:bg-emerald-900/20'}
+                      text-gray-700 dark:text-gray-200`}
+                    onClick={() => setSettingsOpen(!open)}
                   >
-                    <n.Icon className={`h-5 w-5 ${isActive ? 'text-white opacity-100' : 'opacity-80 group-hover:opacity-100'}`} />
-                    {expanded && <span className="truncate">{n.label}</span>}
-                  </div>
-                )}
-              </NavLink>
-            </li>
-          ))}
+                    <group.Icon className="h-5 w-5 opacity-80 group-hover:opacity-100" />
+                    {expanded && <span className="truncate flex-1">{t(group.label)}</span>}
+                    {expanded && <ChevronDownIcon className={`h-4 w-4 transition ${open ? 'rotate-180' : ''}`} />}
+                  </button>
+                  {expanded && open && (
+                    <ul className="mt-1 ml-6 space-y-1" aria-label={`${t(group.label)} submenu`}>
+                      {group.children.map((child) => (
+                        <li key={child.to}>
+                          <NavLink to={child.to}>
+                            {({ isActive }) => (
+                              <div
+                                className={`group flex items-center gap-3 rounded-md px-3 py-2 transition
+                                  focus:outline-none focus:ring-2 focus:ring-emerald-500 border border-transparent
+                                  ${isActive
+                                    ? 'brand-gradient text-white shadow'
+                                    : 'text-gray-700 dark:text-gray-200 hover:bg-emerald-50 dark:hover:bg-emerald-900/20'}`}
+                              >
+                                <child.Icon className={`h-4 w-4 ${isActive ? 'text-white opacity-100' : 'opacity-75 group-hover:opacity-100'}`} />
+                                <span className="truncate text-sm">{t(child.label)}</span>
+                              </div>
+                            )}
+                          </NavLink>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </li>
+              )
+            })}
         </ul>
       </nav>
     </aside>

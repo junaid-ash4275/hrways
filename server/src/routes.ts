@@ -280,6 +280,28 @@ routes.put('/me/preferences', authGuard(), async (req, res, next) => {
     if (prefs.theme && !['light', 'dark'].includes(prefs.theme)) {
       return res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'theme must be light or dark' } });
     }
+    if (prefs.textScale !== undefined) {
+      const n = Number(prefs.textScale)
+      if (!Number.isFinite(n) || n < 90 || n > 120) {
+        return res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'textScale must be a number between 90 and 120' } })
+      }
+      prefs.textScale = Math.round(n)
+    }
+    if (prefs.language !== undefined) {
+      const lang = String(prefs.language).trim()
+      if (!/^[A-Za-z]{2,3}(-[A-Za-z]{2})?$/i.test(lang)) {
+        return res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'language must be like en-US' } })
+      }
+      prefs.language = lang
+    }
+    if (prefs.timezone !== undefined) {
+      const tz = String(prefs.timezone).trim()
+      if (!tz) {
+        return res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'timezone is required when provided' } })
+      }
+      prefs.timezone = tz
+    }
+
     const merged = await pool.query(
       `UPDATE users
          SET preferences = COALESCE(preferences, '{}'::jsonb) || $2::jsonb
