@@ -2,7 +2,7 @@ import { useEffect } from 'react'
 import { http } from '../api/http'
 import { Outlet } from 'react-router-dom'
 import Sidebar from '../shared/Sidebar'
-import Topbar from '../shared/TopbarNew'
+import Topbar from '../shared/Topbar'
 import { UIProvider } from '../ui/UIContext'
 import { I18nProvider } from '../i18n/i18n'
 
