@@ -55,6 +55,9 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='employees' AND column_name='updated_at') THEN
       EXECUTE 'ALTER TABLE public.employees ADD COLUMN updated_at TIMESTAMPTZ NOT NULL DEFAULT now()';
     END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='employees' AND column_name='birth_date') THEN
+      EXECUTE 'ALTER TABLE public.employees ADD COLUMN birth_date DATE NULL';
+    END IF;
 
     -- Ensure reasonable constraints
     -- Unique on employee_code
@@ -102,6 +105,7 @@ CREATE TABLE IF NOT EXISTS employees (
   title TEXT NULL,
   status TEXT NOT NULL DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE','INACTIVE')),
   join_date DATE NULL,
+  birth_date DATE NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
