@@ -1,0 +1,20 @@
+<svg width="64" height="64" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title">
+  <title>HRWays</title>
+  <defs>
+    <linearGradient id="hrwaysGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#10b981"/>
+      <stop offset="50%" stop-color="#14b8a6"/>
+      <stop offset="100%" stop-color="#06b6d4"/>
+    </linearGradient>
+  </defs>
+  <!-- Central person -->
+  <circle cx="32" cy="20" r="8" fill="url(#hrwaysGradient)"/>
+  <path d="M16 46c0-8.84 7.16-16 16-16s16 7.16 16 16v4H16v-4z" fill="url(#hrwaysGradient)"/>
+  <!-- Left person -->
+  <circle cx="18" cy="24" r="5" fill="url(#hrwaysGradient)" opacity="0.9"/>
+  <path d="M8 46c0-6 4.5-10 10-10" fill="none" stroke="url(#hrwaysGradient)" stroke-width="6" stroke-linecap="round" opacity="0.9"/>
+  <!-- Right person -->
+  <circle cx="46" cy="24" r="5" fill="url(#hrwaysGradient)" opacity="0.9"/>
+  <path d="M56 46c0-6-4.5-10-10-10" fill="none" stroke="url(#hrwaysGradient)" stroke-width="6" stroke-linecap="round" opacity="0.9"/>
+</svg>
+
