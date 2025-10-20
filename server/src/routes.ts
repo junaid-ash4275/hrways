@@ -293,6 +293,58 @@ routes.put('/me/preferences', authGuard(), async (req, res, next) => {
   }
 });
 
+// HRW-SET-1: Profile view/update
+// Allowed profile fields: fullName, phone, title (all optional strings)
+routes.get('/me/profile', authGuard(), async (req, res, next) => {
+  try {
+    const userId = (req as any).user?.id;
+    const { rows } = await pool.query('SELECT profile FROM users WHERE id = $1', [userId]);
+    if (rows.length === 0) return res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'User not found' } });
+    res.json(rows[0].profile || {});
+  } catch (e) {
+    next(e);
+  }
+});
+
+routes.put('/me/profile', authGuard(), async (req, res, next) => {
+  try {
+    const userId = (req as any).user?.id;
+    const body = req.body || {};
+    const out: any = {};
+    const errors: string[] = [];
+
+    function takeStr(key: string, max: number, pattern?: RegExp, msg?: string) {
+      if (body[key] === undefined) return;
+      const v = String(body[key]).trim();
+      if (!v) { out[key] = ''; return; }
+      if (v.length > max) errors.push(`${key} too long (max ${max})`);
+      if (pattern && !pattern.test(v)) errors.push(msg || `${key} invalid format`);
+      out[key] = v;
+    }
+
+    takeStr('fullName', 100);
+    // Phone: allow digits, spaces, +, -, parentheses
+    takeStr('phone', 30, /^[0-9+\-()\s]{6,}$/,
+      'phone must contain at least 6 valid characters (digits, space, +, -, ())');
+    takeStr('title', 60);
+
+    if (errors.length) {
+      return res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'Invalid profile data', details: errors } });
+    }
+
+    const merged = await pool.query(
+      `UPDATE users
+         SET profile = COALESCE(profile, '{}'::jsonb) || $2::jsonb
+       WHERE id = $1
+       RETURNING profile`,
+      [userId, JSON.stringify(out)]
+    );
+    res.json(merged.rows[0].profile || {});
+  } catch (e) {
+    next(e);
+  }
+});
+
 routes.get('/admin/ping', authGuard('ADMIN'), (_req, res) => {
   res.json({ ok: true, scope: 'ADMIN' });
 });
