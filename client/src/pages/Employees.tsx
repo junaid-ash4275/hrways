@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react'
+import { FormEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { ChevronLeftIcon, ChevronRightIcon, ChevronDoubleLeftIcon, ChevronDoubleRightIcon } from '@heroicons/react/24/outline'
 import { http } from '../api/http'
 import { useUI } from '../ui/UIContext'
@@ -24,6 +24,13 @@ export default function Employees() {
   const [q, setQ] = useState('')
   const [fStatus, setFStatus] = useState('')
   const [fDept, setFDept] = useState('')
+  const [includeArchived, setIncludeArchived] = useState(false)
+  const [sort, setSort] = useState<'created_at' | 'name' | 'code'>('created_at')
+  const [dir, setDir] = useState<'asc' | 'desc'>('asc')
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editRow, setEditRow] = useState<any>({})
+  const editingRowRef = useRef<HTMLTableRowElement | null>(null)
+  const [uploadingId, setUploadingId] = useState<string | null>(null)
 
   const pages = useMemo(() => Math.max(1, Math.ceil(total / pageSize) || 1), [total, pageSize])
 
@@ -55,10 +62,11 @@ export default function Employees() {
   ) => {
     try {
       setLoadingList(true)
-      const params: any = { page: p, pageSize: ps }
+      const params: any = { page: p, pageSize: ps, sort, dir }
       if (nextQ && nextQ.trim()) params.q = nextQ.trim()
       if (nextStatus) params.status = nextStatus
       if (nextDept && nextDept.trim()) params.department = nextDept.trim()
+      if (includeArchived) params.includeArchived = 'true'
       const { data } = await http.get('/employees', { params })
       setList(data?.data || [])
       setTotal(data?.total || 0)
@@ -93,6 +101,90 @@ export default function Employees() {
     } finally {
       setLoading(false)
     }
+  }
+
+  const startEdit = (row: any) => {
+    setEditingId(row.id)
+    setEditRow({
+      name: row.name || '',
+      email: row.email || '',
+      phone: row.phone || '',
+      department: row.department || '',
+      title: row.title || '',
+      status: row.status || 'ACTIVE',
+      join_date: row.join_date ? String(row.join_date).slice(0,10) : '',
+      birth_date: row.birth_date ? String(row.birth_date).slice(0,10) : '',
+    })
+  }
+
+  const cancelEdit = () => { setEditingId(null); setEditRow({}) }
+
+  const saveEdit = async (id: string) => {
+    try {
+      const payload: any = {}
+      Object.keys(editRow).forEach((k) => { if (editRow[k] !== undefined) payload[k] = editRow[k] })
+      const { data } = await http.put(`/employees/${id}`, payload)
+      setList((old) => old.map((r) => r.id === id ? { ...r, ...data } : r))
+      setEditingId(null)
+      setEditRow({})
+      notify({ type: 'success', message: 'Employee updated' })
+    } catch (err: any) {
+      const m = err?.response?.data?.error?.message || 'Failed to update employee'
+      notify({ type: 'error', message: m })
+    }
+  }
+
+  const triggerUpload = (id: string) => {
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = 'application/pdf,image/*'
+    input.onchange = async () => {
+      const file = input.files && input.files[0]
+      if (!file) return
+      try {
+        setUploadingId(id)
+        const fd = new FormData()
+        fd.append('file', file)
+        await http.post(`/employees/${id}/documents`, fd, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        })
+        notify({ type: 'success', message: 'Document uploaded' })
+      } catch (err: any) {
+        const m = err?.response?.data?.error?.message || 'Failed to upload document'
+        notify({ type: 'error', message: m })
+      } finally {
+        setUploadingId(null)
+      }
+    }
+    input.click()
+  }
+
+  const toggleArchive = async (row: any) => {
+    try {
+      if (row.status === 'ACTIVE') {
+        await http.patch(`/employees/${row.id}/archive`)
+        setList((old) => old.map((r) => r.id === row.id ? { ...r, status: 'INACTIVE' } : r))
+      } else {
+        await http.patch(`/employees/${row.id}/activate`)
+        setList((old) => old.map((r) => r.id === row.id ? { ...r, status: 'ACTIVE' } : r))
+      }
+    } catch (err: any) {
+      const m = err?.response?.data?.error?.message || 'Failed to update status'
+      notify({ type: 'error', message: m })
+    }
+  }
+
+  const handleRowBlur = (rowId: string) => {
+    // Defer to allow focus to move within row
+    setTimeout(() => {
+      const rowEl = editingRowRef.current
+      const active = document.activeElement as HTMLElement | null
+      if (!rowEl) return
+      if (!active || !rowEl.contains(active)) {
+        // Focus left the edit row; save changes
+        saveEdit(rowId)
+      }
+    }, 0)
   }
 
   return (
@@ -135,7 +227,15 @@ export default function Employees() {
               <option value="INACTIVE">INACTIVE</option>
             </select>
             <label htmlFor="fd" className="ml-3">Department</label>
-            <input id="fd" value={fDept} onChange={(e) => { const v = e.target.value; setFDept(v); fetchList(1, pageSize, q, fStatus, v); }} placeholder="e.g., HR" className="px-2 py-1 rounded border border-gray-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-gray-900 dark:text-gray-100" />
+            <input
+              id="fd"
+              value={fDept}
+              onChange={(e) => { const v = e.target.value; setFDept(v); fetchList(1, pageSize, q, fStatus, v); }}
+              placeholder="e.g., HR"
+              className="px-2 py-1 rounded border border-gray-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-gray-900 dark:text-gray-100"
+            />
+            <label htmlFor="ia" className="ml-3">Include archived</label>
+            <input id="ia" type="checkbox" checked={includeArchived} onChange={(e) => { setIncludeArchived(e.target.checked); fetchList(1, pageSize, q, fStatus, fDept); }} />
           </div>
         </div>
         <div className="overflow-x-auto">
@@ -150,7 +250,8 @@ export default function Employees() {
                 <th className="py-2 pr-3">Title</th>
                 <th className="py-2 pr-3">Status</th>
                 <th className="py-2 pr-3">Join Date</th>
-                <th className="py-2 pr-0">Birthday</th>
+                <th className="py-2 pr-3">Birthday</th>
+                <th className="py-2 pr-0">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -159,19 +260,72 @@ export default function Employees() {
               ) : list.length === 0 ? (
                 <tr><td colSpan={9} className="py-6 text-center opacity-70">No employees yet</td></tr>
               ) : (
-                list.map((e) => (
-                  <tr key={e.id} className="border-b border-gray-100 dark:border-neutral-800">
-                    <td className="py-2 pr-3">{e.employee_code}</td>
-                    <td className="py-2 pr-3">{e.name}</td>
-                    <td className="py-2 pr-3">{e.email}</td>
-                    <td className="py-2 pr-3">{e.phone || '-'}</td>
-                    <td className="py-2 pr-3">{e.department || '-'}</td>
-                    <td className="py-2 pr-3">{e.title || '-'}</td>
-                    <td className="py-2 pr-3">{e.status}</td>
-                    <td className="py-2 pr-3">{e.join_date ? new Date(e.join_date).toLocaleDateString() : '-'}</td>
-                    <td className="py-2 pr-0">{e.birth_date ? new Date(e.birth_date).toLocaleDateString() : '-'}</td>
-                  </tr>
-                ))
+                list.map((e) => {
+                  const isEdit = editingId === e.id
+                  return (
+                    <tr
+                      key={e.id}
+                      className="border-b border-gray-100 dark:border-neutral-800 hover:bg-gray-50/50 dark:hover:bg-neutral-800/40 cursor-pointer"
+                      onClick={() => { if (!isEdit) startEdit(e) }}
+                      ref={isEdit ? editingRowRef : null}
+                    >
+                      <td className="py-2 pr-3">{e.employee_code}</td>
+                      <td className="py-2 pr-3">
+                        {isEdit ? (
+                          <input value={editRow.name} onChange={(ev) => setEditRow((r:any) => ({ ...r, name: ev.target.value }))} onBlur={() => handleRowBlur(e.id)} onKeyDown={(ev) => { if (ev.key === 'Enter') saveEdit(e.id) }} className="w-full px-2 py-1 rounded border border-gray-300 dark:border-neutral-700 bg-transparent" />
+                        ) : e.name}
+                      </td>
+                      <td className="py-2 pr-3">
+                        {isEdit ? (
+                          <input type="email" value={editRow.email} onChange={(ev) => setEditRow((r:any) => ({ ...r, email: ev.target.value }))} onBlur={() => handleRowBlur(e.id)} onKeyDown={(ev) => { if (ev.key === 'Enter') saveEdit(e.id) }} className="w-full px-2 py-1 rounded border border-gray-300 dark:border-neutral-700 bg-transparent" />
+                        ) : e.email}
+                      </td>
+                      <td className="py-2 pr-3">
+                        {isEdit ? (
+                          <input value={editRow.phone} onChange={(ev) => setEditRow((r:any) => ({ ...r, phone: ev.target.value }))} onBlur={() => handleRowBlur(e.id)} onKeyDown={(ev) => { if (ev.key === 'Enter') saveEdit(e.id) }} className="w-full px-2 py-1 rounded border border-gray-300 dark:border-neutral-700 bg-transparent" />
+                        ) : (e.phone || '-')}
+                      </td>
+                      <td className="py-2 pr-3">
+                        {isEdit ? (
+                          <input value={editRow.department} onChange={(ev) => setEditRow((r:any) => ({ ...r, department: ev.target.value }))} onBlur={() => handleRowBlur(e.id)} onKeyDown={(ev) => { if (ev.key === 'Enter') saveEdit(e.id) }} className="w-full px-2 py-1 rounded border border-gray-300 dark:border-neutral-700 bg-transparent" />
+                        ) : (e.department || '-')}
+                      </td>
+                      <td className="py-2 pr-3">
+                        {isEdit ? (
+                          <input value={editRow.title} onChange={(ev) => setEditRow((r:any) => ({ ...r, title: ev.target.value }))} onBlur={() => handleRowBlur(e.id)} onKeyDown={(ev) => { if (ev.key === 'Enter') saveEdit(e.id) }} className="w-full px-2 py-1 rounded border border-gray-300 dark:border-neutral-700 bg-transparent" />
+                        ) : (e.title || '-')}
+                      </td>
+                      <td className="py-2 pr-3">
+                        {isEdit ? (
+                          <select value={editRow.status} onChange={(ev) => setEditRow((r:any) => ({ ...r, status: ev.target.value }))} onBlur={() => handleRowBlur(e.id)} className="px-2 py-1 rounded border border-gray-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-gray-900 dark:text-gray-100 dark:[color-scheme:dark]">
+                            <option value="ACTIVE">ACTIVE</option>
+                            <option value="INACTIVE">INACTIVE</option>
+                          </select>
+                        ) : e.status}
+                      </td>
+                      <td className="py-2 pr-3">
+                        {isEdit ? (
+                          <input type="date" value={editRow.join_date} onChange={(ev) => setEditRow((r:any) => ({ ...r, join_date: ev.target.value }))} onBlur={() => handleRowBlur(e.id)} className="px-2 py-1 rounded border border-gray-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-gray-900 dark:text-gray-100 dark:[color-scheme:dark]" />
+                        ) : (e.join_date ? new Date(e.join_date).toLocaleDateString() : '-')}
+                      </td>
+                      <td className="py-2 pr-3">
+                        {isEdit ? (
+                          <input type="date" value={editRow.birth_date} onChange={(ev) => setEditRow((r:any) => ({ ...r, birth_date: ev.target.value }))} onBlur={() => handleRowBlur(e.id)} className="px-2 py-1 rounded border border-gray-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-gray-900 dark:text-gray-100 dark:[color-scheme:dark]" />
+                        ) : (e.birth_date ? new Date(e.birth_date).toLocaleDateString() : '-')}
+                      </td>
+                      <td className="py-2 pr-0">
+                        <div className="flex items-center gap-2">
+                          <button onClick={(ev) => { ev.stopPropagation(); toggleArchive(e) }} className="px-2 py-1 rounded border border-gray-300 dark:border-neutral-700">{e.status === 'ACTIVE' ? 'Archive' : 'Activate'}</button>
+                          <button
+                            onClick={(ev) => { ev.stopPropagation(); triggerUpload(e.id) }}
+                            disabled={uploadingId === e.id}
+                            className="px-2 py-1 rounded border border-gray-300 dark:border-neutral-700 disabled:opacity-50"
+                          >{uploadingId === e.id ? 'Uploading…' : 'Upload Doc'}</button>
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })
               )}
             </tbody>
           </table>

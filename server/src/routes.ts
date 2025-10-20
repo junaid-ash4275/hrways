@@ -4,10 +4,12 @@ import bcrypt from 'bcryptjs';
 import { sign, verify } from 'jsonwebtoken';
 import { env } from './config/env';
 import { authGuard } from './middleware/authGuard';
-import { randomUUID, randomInt } from 'crypto';
+import { randomUUID, randomInt, createHash } from 'crypto';
+import multer from 'multer';
 import { sendOtpEmail } from './config/email';
 
 export const routes = Router();
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: Number(env.MAX_UPLOAD_MB) * 1024 * 1024 } });
 
 routes.get('/healthz', async (_req, res) => {
   const db = await pingDb();
@@ -42,6 +44,119 @@ routes.post('/auth/login', async (req, res, next) => {
     next(e);
   }
 });
+
+// HRW-EMP-3: Update employee (partial update)
+routes.put('/employees/:id', authGuard('HR'), async (req, res, next) => {
+  try {
+    const id = req.params.id;
+    const b = req.body || {};
+    const errors: string[] = [];
+    const fields: string[] = [];
+    const params: any[] = [];
+    let pi = 1;
+
+    function takeStr(key: string, max: number, pattern?: RegExp, msg?: string) {
+      if (b[key] === undefined) return;
+      const v = String(b[key]).trim();
+      if (!v) { fields.push(`${key} = NULL`); return; }
+      if (v.length > max) errors.push(`${key} too long (max ${max})`);
+      if (pattern && !pattern.test(v)) errors.push(msg || `${key} invalid format`);
+      fields.push(`${key} = $${pi}`); params.push(v); pi++;
+    }
+
+    function takeEnum(key: string, allowed: string[]) {
+      if (b[key] === undefined) return;
+      const v = String(b[key]).trim().toUpperCase();
+      if (!allowed.includes(v)) errors.push(`${key} must be one of ${allowed.join(', ')}`);
+      fields.push(`${key} = $${pi}`); params.push(v); pi++;
+    }
+
+    function takeDate(key: string) {
+      if (b[key] === undefined) return;
+      const v = String(b[key]).trim();
+      if (!v) { fields.push(`${key} = NULL`); return; }
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) errors.push(`${key} must be YYYY-MM-DD`);
+      fields.push(`${key} = $${pi}`); params.push(v); pi++;
+    }
+
+    takeStr('employee_code', 20, /^[A-Za-z0-9_\-]{3,20}$/, 'employee_code must be 3-20 chars [A-Za-z0-9_-]');
+    takeStr('name', 120);
+    takeStr('email', 160, /^[^\s@]+@[^\s@]+\.[^\s@]+$/, 'email invalid');
+    takeStr('phone', 30, /^[0-9+\-()\s]{6,}$/, 'phone must contain at least 6 valid characters (digits, space, +, -, ())');
+    takeStr('department', 60);
+    takeStr('title', 60);
+    takeEnum('status', ['ACTIVE','INACTIVE']);
+    takeDate('join_date');
+    takeDate('birth_date');
+
+    if (errors.length) return res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'Invalid employee data', details: errors } });
+    if (fields.length === 0) return res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'No changes provided' } });
+
+    try {
+      const r = await pool.query(
+        `UPDATE employees SET ${fields.join(', ')}, updated_at = now() WHERE id = $${pi} RETURNING id, employee_code, name, email, phone, department, title, status, join_date, birth_date, created_at`,
+        [...params, id]
+      );
+      if (r.rows.length === 0) return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Employee not found' } });
+      return res.json(r.rows[0]);
+    } catch (e: any) {
+      if (e?.code === '23505') {
+        const msg = (e?.detail || '').includes('employee_code')
+          ? 'employee_code already exists'
+          : (e?.detail || '').includes('email')
+          ? 'email already exists'
+          : 'duplicate value';
+        return res.status(409).json({ error: { code: 'CONFLICT', message: msg } });
+      }
+      throw e;
+    }
+  } catch (e) { next(e); }
+});
+
+// HRW-EMP-3: Archive (INACTIVE) and Activate (ACTIVE)
+routes.patch('/employees/:id/archive', authGuard('HR'), async (req, res, next) => {
+  try {
+    const id = req.params.id;
+    const r = await pool.query(`UPDATE employees SET status = 'INACTIVE', updated_at = now() WHERE id = $1 RETURNING id, status`, [id]);
+    if (r.rows.length === 0) return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Employee not found' } });
+    res.json(r.rows[0]);
+  } catch (e) { next(e); }
+});
+
+routes.patch('/employees/:id/activate', authGuard('HR'), async (req, res, next) => {
+  try {
+    const id = req.params.id;
+    const r = await pool.query(`UPDATE employees SET status = 'ACTIVE', updated_at = now() WHERE id = $1 RETURNING id, status`, [id]);
+    if (r.rows.length === 0) return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Employee not found' } });
+    res.json(r.rows[0]);
+  } catch (e) { next(e); }
+});
+
+// HRW-EMP-5: Upload Employee Document (DB)
+routes.post('/employees/:id/documents', authGuard('HR'), upload.single('file'), async (req, res, next) => {
+  try {
+    const employeeId = req.params.id
+    const f = req.file
+    if (!f) return res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'file is required' } })
+    const allowed = (env.ALLOWED_MIME || '').split(',').map(s => s.trim()).filter(Boolean)
+    if (allowed.length && !allowed.includes(f.mimetype)) {
+      return res.status(415).json({ error: { code: 'UNSUPPORTED_MEDIA_TYPE', message: `MIME type not allowed: ${f.mimetype}` } })
+    }
+    // Sanitize filename: keep alnum, dash, underscore, dot
+    const base = (f.originalname || 'file').replace(/[^A-Za-z0-9._-]+/g, '_').slice(0, 120)
+    const sha = createHash('sha256').update(f.buffer).digest('hex')
+    // Ensure employee exists (FK will error otherwise, but nicer message)
+    const emp = await pool.query('SELECT id FROM employees WHERE id = $1', [employeeId])
+    if (emp.rows.length === 0) return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Employee not found' } })
+    const ins = await pool.query(
+      `INSERT INTO employee_documents (employee_id, filename, mime, size_bytes, sha256, content)
+       VALUES ($1,$2,$3,$4,$5,$6)
+       RETURNING id, employee_id, filename, mime, size_bytes, sha256, created_at`,
+      [employeeId, base, f.mimetype, f.size, sha, f.buffer]
+    )
+    res.status(201).json(ins.rows[0])
+  } catch (e) { next(e) }
+})
 
 // HRW-RESET-1: Request password reset (OTP)
 routes.post('/auth/request-reset', async (req, res, next) => {
@@ -411,6 +526,7 @@ routes.get('/employees', authGuard('HR'), async (req, res, next) => {
 
     const q = (req.query.q || '').toString().trim();
     const status = (req.query.status || '').toString().trim().toUpperCase();
+    const includeArchived = String(req.query.includeArchived || '').toLowerCase() === 'true';
     const department = (req.query.department || '').toString().trim();
 
     const where: string[] = [];
@@ -423,6 +539,10 @@ routes.get('/employees', authGuard('HR'), async (req, res, next) => {
     if (status && ['ACTIVE','INACTIVE'].includes(status)) {
       where.push(`status = $${pi}`); params.push(status); pi++;
     }
+    // If no explicit status filter and not including archived, default to ACTIVE only
+    if (!status && !includeArchived) {
+      where.push(`status = 'ACTIVE'`);
+    }
     if (department) {
       where.push(`department ILIKE $${pi}`); params.push(`%${department}%`); pi++;
     }
@@ -431,11 +551,18 @@ routes.get('/employees', authGuard('HR'), async (req, res, next) => {
     const countRes = await pool.query(`SELECT COUNT(*)::int AS c FROM employees ${whereSql}`, params);
     const total = countRes.rows[0]?.c || 0;
 
+    // Sorting
+    const sortRaw = (req.query.sort || 'created_at').toString().toLowerCase();
+    const dirRaw = (req.query.dir || 'asc').toString().toLowerCase();
+    const allowedSort: Record<string,string> = { created_at: 'created_at', name: 'name', code: 'employee_code' };
+    const sortCol = allowedSort[sortRaw] || 'created_at';
+    const dir = dirRaw === 'desc' ? 'DESC' : 'ASC';
+
     const listRes = await pool.query(
       `SELECT id, employee_code, name, email, phone, department, title, status, join_date, birth_date, created_at
          FROM employees
          ${whereSql}
-        ORDER BY created_at ASC
+        ORDER BY ${sortCol} ${dir}
         LIMIT $${pi} OFFSET $${pi + 1}`,
       [...params, pageSize, offset]
     );
