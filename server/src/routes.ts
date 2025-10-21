@@ -45,6 +45,101 @@ routes.post('/auth/login', async (req, res, next) => {
   }
 });
 
+// HRW-EMP-7: Export Employees CSV
+routes.get('/employees/export.csv', authGuard('HR'), async (req, res, next) => {
+  try {
+    // Reuse filters from list endpoint
+    const q = (req.query.q || '').toString().trim();
+    const status = (req.query.status || '').toString().trim().toUpperCase();
+    const includeArchived = String(req.query.includeArchived || '').toLowerCase() === 'true';
+    const department = (req.query.department || '').toString().trim();
+
+    const where: string[] = [];
+    const params: any[] = [];
+    let pi = 1;
+    if (q) {
+      where.push(`(employee_code ILIKE $${pi} OR name ILIKE $${pi} OR email ILIKE $${pi} OR department ILIKE $${pi} OR title ILIKE $${pi})`);
+      params.push(`%${q}%`); pi++;
+    }
+    if (status && ['ACTIVE','INACTIVE'].includes(status)) {
+      where.push(`status = $${pi}`); params.push(status); pi++;
+    }
+    if (!status && !includeArchived) {
+      where.push(`status = 'ACTIVE'`);
+    }
+    if (department) {
+      where.push(`department ILIKE $${pi}`); params.push(`%${department}%`); pi++;
+    }
+    const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+
+    // Sorting (use name asc as a sensible default for CSV)
+    const sortRaw = (req.query.sort || 'name').toString().toLowerCase();
+    const dirRaw = (req.query.dir || 'asc').toString().toLowerCase();
+    const allowedSort: Record<string,string> = { created_at: 'created_at', name: 'name', code: 'employee_code' };
+    const sortCol = allowedSort[sortRaw] || 'name';
+    const dir = dirRaw === 'desc' ? 'DESC' : 'ASC';
+
+    const { rows } = await pool.query(
+      `SELECT employee_code, name, email, phone, department, title, status, join_date, birth_date, created_at
+         FROM employees
+         ${whereSql}
+        ORDER BY ${sortCol} ${dir}`,
+      params
+    );
+
+    // CSV helpers
+    function escapeFormula(s: string) {
+      if (!s) return s;
+      const c = s[0];
+      return (c === '=' || c === '+' || c === '-' || c === '@') ? (`'` + s) : s;
+    }
+    function toCsvField(v: any): string {
+      if (v === null || v === undefined) return '';
+      let s = typeof v === 'string' ? v : (v instanceof Date ? v.toISOString() : String(v));
+      // Normalize dates (YYYY-MM-DD) for date columns
+      if (/^\d{4}-\d{2}-\d{2}T/.test(s)) s = s.slice(0, 10);
+      s = escapeFormula(s);
+      if (/[",\n\r]/.test(s)) {
+        s = '"' + s.replace(/"/g, '""') + '"';
+      }
+      return s;
+    }
+
+    // Filename with filter context
+    function slug(v: string) { return v.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 40); }
+    const ts = new Date();
+    const stamp = `${ts.getFullYear()}${String(ts.getMonth()+1).padStart(2,'0')}${String(ts.getDate()).padStart(2,'0')}_${String(ts.getHours()).padStart(2,'0')}${String(ts.getMinutes()).padStart(2,'0')}${String(ts.getSeconds()).padStart(2,'0')}`;
+    const parts: string[] = [];
+    if (q) parts.push(`q_${slug(q)}`);
+    if (department) parts.push(`dept_${slug(department)}`);
+    if (status) parts.push(`status_${slug(status)}`);
+    if (includeArchived) parts.push('archived');
+    const fname = `employees_${stamp}${parts.length ? '_' + parts.join('_') : ''}.csv`;
+
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${fname}"`);
+    // Optionally add BOM for Excel: res.write('\uFEFF');
+    // Header row
+    res.write(['Code','Name','Email','Phone','Department','Title','Status','Join Date','Birth Date','Created At'].map(toCsvField).join(',') + '\n');
+    for (const r of rows) {
+      const line = [
+        r.employee_code,
+        r.name,
+        r.email,
+        r.phone || '',
+        r.department || '',
+        r.title || '',
+        r.status,
+        r.join_date ? String(r.join_date).slice(0,10) : '',
+        r.birth_date ? String(r.birth_date).slice(0,10) : '',
+        r.created_at ? new Date(r.created_at).toISOString() : ''
+      ].map(toCsvField).join(',');
+      res.write(line + '\n');
+    }
+    res.end();
+  } catch (e) { next(e) }
+});
+
 // HRW-EMP-3: Update employee (partial update)
 routes.put('/employees/:id', authGuard('HR'), async (req, res, next) => {
   try {

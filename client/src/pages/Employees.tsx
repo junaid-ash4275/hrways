@@ -55,6 +55,35 @@ export default function Employees() {
 
   const pages = useMemo(() => Math.max(1, Math.ceil(total / pageSize) || 1), [total, pageSize])
 
+  const exportCsv = async () => {
+    try {
+      const params: any = {}
+      if (q && q.trim()) params.q = q.trim()
+      if (fStatus) params.status = fStatus
+      if (fDept && fDept.trim()) params.department = fDept.trim()
+      if (includeArchived) params.includeArchived = 'true'
+      const resp = await http.get('/employees/export.csv', { params, responseType: 'blob' })
+      const blob = new Blob([resp.data], { type: 'text/csv;charset=utf-8' })
+      // Try to extract filename from Content-Disposition
+      let filename = 'employees.csv'
+      const disp = (resp.headers as any)['content-disposition'] || (resp as any).headers?.['content-disposition']
+      if (disp && /filename="?([^";]+)"?/i.test(disp)) {
+        filename = decodeURIComponent(RegExp.$1)
+      }
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = filename
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+    } catch (err: any) {
+      const m = err?.response?.data?.error?.message || 'Failed to export CSV'
+      notify({ type: 'error', message: m })
+    }
+  }
+
   // Compute visible page buttons with ellipsis
   const pageButtons = useMemo<(number | '...')[]>(() => {
     const items: (number | '...')[] = []
@@ -306,6 +335,7 @@ export default function Employees() {
             />
             <label htmlFor="ia" className="ml-3">Include archived</label>
             <input id="ia" type="checkbox" checked={includeArchived} onChange={(e) => { setIncludeArchived(e.target.checked); fetchList(1, pageSize, q, fStatus, fDept); }} />
+            <button onClick={exportCsv} className="ml-3 px-3 py-1.5 rounded border border-gray-300 dark:border-neutral-700">Export CSV</button>
           </div>
         </div>
         <div className="overflow-x-auto">
