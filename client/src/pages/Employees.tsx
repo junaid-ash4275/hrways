@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react'
-import { ChevronLeftIcon, ChevronRightIcon, ChevronDoubleLeftIcon, ChevronDoubleRightIcon } from '@heroicons/react/24/outline'
+import { ChevronLeftIcon, ChevronRightIcon, ChevronDoubleLeftIcon, ChevronDoubleRightIcon, PaperClipIcon, ArrowDownTrayIcon, TrashIcon, XMarkIcon, MagnifyingGlassIcon } from '@heroicons/react/24/outline'
 import { http } from '../api/http'
 import { useUI } from '../ui/UIContext'
 
@@ -31,8 +31,58 @@ export default function Employees() {
   const [editRow, setEditRow] = useState<any>({})
   const editingRowRef = useRef<HTMLTableRowElement | null>(null)
   const [uploadingId, setUploadingId] = useState<string | null>(null)
+  const [docsEmployeeId, setDocsEmployeeId] = useState<string | null>(null)
+  const [docsEmployeeName, setDocsEmployeeName] = useState<string | null>(null)
+  const [docs, setDocs] = useState<any[]>([])
+  const [docsLoading, setDocsLoading] = useState(false)
+  const [docsQuery, setDocsQuery] = useState('')
+  const filteredDocs = useMemo(() => {
+    const q = docsQuery.trim().toLowerCase()
+    if (!q) return docs
+    return docs.filter((d) =>
+      String(d.filename || '').toLowerCase().includes(q) ||
+      String(d.mime || '').toLowerCase().includes(q) ||
+      String(d.sha256 || '').toLowerCase().includes(q)
+    )
+  }, [docs, docsQuery])
+  useEffect(() => {
+    function onKey(ev: KeyboardEvent) {
+      if (ev.key === 'Escape' && docsEmployeeId) closeDocs()
+    }
+    if (docsEmployeeId) window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [docsEmployeeId])
 
   const pages = useMemo(() => Math.max(1, Math.ceil(total / pageSize) || 1), [total, pageSize])
+
+  const exportCsv = async () => {
+    try {
+      const params: any = {}
+      if (q && q.trim()) params.q = q.trim()
+      if (fStatus) params.status = fStatus
+      if (fDept && fDept.trim()) params.department = fDept.trim()
+      if (includeArchived) params.includeArchived = 'true'
+      const resp = await http.get('/employees/export.csv', { params, responseType: 'blob' })
+      const blob = new Blob([resp.data], { type: 'text/csv;charset=utf-8' })
+      // Try to extract filename from Content-Disposition
+      let filename = 'employees.csv'
+      const disp = (resp.headers as any)['content-disposition'] || (resp as any).headers?.['content-disposition']
+      if (disp && /filename="?([^";]+)"?/i.test(disp)) {
+        filename = decodeURIComponent(RegExp.$1)
+      }
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = filename
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+    } catch (err: any) {
+      const m = err?.response?.data?.error?.message || 'Failed to export CSV'
+      notify({ type: 'error', message: m })
+    }
+  }
 
   // Compute visible page buttons with ellipsis
   const pageButtons = useMemo<(number | '...')[]>(() => {
@@ -149,6 +199,11 @@ export default function Employees() {
           headers: { 'Content-Type': 'multipart/form-data' },
         })
         notify({ type: 'success', message: 'Document uploaded' })
+        if (docsEmployeeId === id) {
+          // refresh list in drawer if open for same employee
+          const { data } = await http.get(`/employees/${id}/documents`)
+          setDocs(data?.data || [])
+        }
       } catch (err: any) {
         const m = err?.response?.data?.error?.message || 'Failed to upload document'
         notify({ type: 'error', message: m })
@@ -157,6 +212,50 @@ export default function Employees() {
       }
     }
     input.click()
+  }
+
+  const openDocs = async (id: string, name?: string) => {
+    try {
+      setDocsLoading(true)
+      setDocsEmployeeId(id)
+      setDocsEmployeeName(name || null)
+      const { data } = await http.get(`/employees/${id}/documents`)
+      setDocs(data?.data || [])
+    } catch (err: any) {
+      const m = err?.response?.data?.error?.message || 'Failed to load documents'
+      notify({ type: 'error', message: m })
+    } finally { setDocsLoading(false) }
+  }
+
+  const closeDocs = () => { setDocsEmployeeId(null); setDocsEmployeeName(null); setDocs([]); setDocsQuery('') }
+
+  const downloadDoc = async (empId: string, d: any) => {
+    try {
+      const resp = await http.get(`/employees/${empId}/documents/${d.id}/download`, { responseType: 'blob' })
+      const blob = new Blob([resp.data], { type: d.mime })
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = d.filename || 'file'
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      window.URL.revokeObjectURL(url)
+    } catch (err: any) {
+      const m = err?.response?.data?.error?.message || 'Failed to download document'
+      notify({ type: 'error', message: m })
+    }
+  }
+
+  const deleteDoc = async (empId: string, d: any) => {
+    try {
+      await http.delete(`/employees/${empId}/documents/${d.id}`)
+      setDocs((old) => old.filter((x) => x.id !== d.id))
+      notify({ type: 'success', message: 'Document deleted' })
+    } catch (err: any) {
+      const m = err?.response?.data?.error?.message || 'Failed to delete document'
+      notify({ type: 'error', message: m })
+    }
   }
 
   const toggleArchive = async (row: any) => {
@@ -236,6 +335,7 @@ export default function Employees() {
             />
             <label htmlFor="ia" className="ml-3">Include archived</label>
             <input id="ia" type="checkbox" checked={includeArchived} onChange={(e) => { setIncludeArchived(e.target.checked); fetchList(1, pageSize, q, fStatus, fDept); }} />
+            <button onClick={exportCsv} className="ml-3 px-3 py-1.5 rounded border border-gray-300 dark:border-neutral-700">Export CSV</button>
           </div>
         </div>
         <div className="overflow-x-auto">
@@ -317,10 +417,9 @@ export default function Employees() {
                         <div className="flex items-center gap-2">
                           <button onClick={(ev) => { ev.stopPropagation(); toggleArchive(e) }} className="px-2 py-1 rounded border border-gray-300 dark:border-neutral-700">{e.status === 'ACTIVE' ? 'Archive' : 'Activate'}</button>
                           <button
-                            onClick={(ev) => { ev.stopPropagation(); triggerUpload(e.id) }}
-                            disabled={uploadingId === e.id}
-                            className="px-2 py-1 rounded border border-gray-300 dark:border-neutral-700 disabled:opacity-50"
-                          >{uploadingId === e.id ? 'Uploading…' : 'Upload Doc'}</button>
+                            onClick={(ev) => { ev.stopPropagation(); openDocs(e.id, e.name) }}
+                            className="px-2 py-1 rounded border border-gray-300 dark:border-neutral-700"
+                          >Docs</button>
                         </div>
                       </td>
                     </tr>
@@ -330,6 +429,82 @@ export default function Employees() {
             </tbody>
           </table>
         </div>
+        {docsEmployeeId && (
+          <>
+            {/* Overlay */}
+            <div
+              className="fixed inset-0 bg-black/30 z-40"
+              onClick={closeDocs}
+              aria-hidden="true"
+            />
+            {/* Drawer */}
+            <div role="dialog" aria-modal="true" className="fixed right-0 top-0 h-full w-[420px] max-w-[90vw] bg-white dark:bg-neutral-900 border-l border-gray-200 dark:border-neutral-800 shadow-xl z-50 flex flex-col">
+              <div className="sticky top-0 px-4 py-3 border-b border-gray-200 dark:border-neutral-800 flex items-center justify-between">
+                <div className="min-w-0">
+                  <div className="text-sm opacity-70">Documents</div>
+                  <div className="font-medium truncate">{docsEmployeeName || 'Employee'}</div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => docsEmployeeId && triggerUpload(docsEmployeeId)}
+                    disabled={!!uploadingId}
+                    className="px-2 py-1 rounded border border-gray-300 dark:border-neutral-700 disabled:opacity-50 flex items-center gap-1"
+                    title="Upload"
+                    aria-label="Upload"
+                  >
+                    <PaperClipIcon className="h-4 w-4" />
+                    <span className="hidden sm:inline">Upload</span>
+                  </button>
+                  <button onClick={closeDocs} className="p-2 rounded border border-gray-300 dark:border-neutral-700" title="Close" aria-label="Close" autoFocus>
+                    <XMarkIcon className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+              <div className="px-4 py-3 overflow-y-auto">
+                {/* Search */}
+                <div className="mb-3 relative">
+                  <MagnifyingGlassIcon className="h-4 w-4 absolute left-2 top-1/2 -translate-y-1/2 opacity-60" />
+                  <input
+                    type="search"
+                    value={docsQuery}
+                    onChange={(e) => setDocsQuery(e.target.value)}
+                    placeholder="Search documents…"
+                    className="w-full pl-8 pr-8 py-2 rounded border border-gray-300 dark:border-neutral-700 bg-white dark:bg-neutral-900"
+                    aria-label="Search documents"
+                  />
+                </div>
+                {docsLoading ? (
+                  <div className="text-sm opacity-70">Loading…</div>
+                ) : docs.length === 0 ? (
+                  <div className="text-sm opacity-70">
+                    No documents yet. Click <span className="font-medium">Upload</span> to add one.
+                  </div>
+                ) : filteredDocs.length === 0 ? (
+                  <div className="text-sm opacity-70">No documents match your search.</div>
+                ) : (
+                  <ul className="divide-y divide-gray-200 dark:divide-neutral-800">
+                    {filteredDocs.map((d) => (
+                      <li key={d.id} className="py-2 flex items-center justify-between gap-2">
+                        <div className="min-w-0">
+                          <div className="truncate font-medium">{d.filename}</div>
+                          <div className="text-xs opacity-70">{d.mime} • {formatSize(d.size_bytes)} • {new Date(d.created_at).toLocaleString()}</div>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <button onClick={() => downloadDoc(docsEmployeeId, d)} className="p-2 rounded border border-gray-300 dark:border-neutral-700" title="Download" aria-label="Download">
+                            <ArrowDownTrayIcon className="h-4 w-4" />
+                          </button>
+                          <button onClick={() => deleteDoc(docsEmployeeId!, d)} className="p-2 rounded border border-gray-300 dark:border-neutral-700" title="Delete" aria-label="Delete">
+                            <TrashIcon className="h-4 w-4" />
+                          </button>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </div>
+          </>
+        )}
         <div className="flex items-center justify-between mt-3 text-sm border-t border-gray-200 dark:border-neutral-700 pt-3 sticky bottom-0 bg-white dark:bg-neutral-800">
           <div className="opacity-70">Page {page} of {pages} | {total} total</div>
           <nav aria-label="Pagination" className="flex items-center gap-2">
@@ -353,7 +528,7 @@ export default function Employees() {
             >
               <ChevronDoubleLeftIcon className="h-4 w-4" />
               <span className="hidden sm:inline">First</span>
-            </button>
+      </button>
             <button
               disabled={page <= 1 || loadingList}
               onClick={() => fetchList(page - 1, pageSize, q, fStatus, fDept)}
@@ -472,6 +647,15 @@ export default function Employees() {
       )}
     </section>
   )
+}
+
+function formatSize(n?: number) {
+  if (!n || n <= 0) return '0 B'
+  const units = ['B','KB','MB','GB']
+  let i = 0
+  let x = n
+  while (x >= 1024 && i < units.length - 1) { x /= 1024; i++ }
+  return `${x.toFixed(i === 0 ? 0 : 1)} ${units[i]}`
 }
 
 
