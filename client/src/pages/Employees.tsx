@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react'
-import { ChevronLeftIcon, ChevronRightIcon, ChevronDoubleLeftIcon, ChevronDoubleRightIcon } from '@heroicons/react/24/outline'
+import { ChevronLeftIcon, ChevronRightIcon, ChevronDoubleLeftIcon, ChevronDoubleRightIcon, PaperClipIcon, ArrowDownTrayIcon, TrashIcon, XMarkIcon } from '@heroicons/react/24/outline'
 import { http } from '../api/http'
 import { useUI } from '../ui/UIContext'
 
@@ -32,8 +32,16 @@ export default function Employees() {
   const editingRowRef = useRef<HTMLTableRowElement | null>(null)
   const [uploadingId, setUploadingId] = useState<string | null>(null)
   const [docsEmployeeId, setDocsEmployeeId] = useState<string | null>(null)
+  const [docsEmployeeName, setDocsEmployeeName] = useState<string | null>(null)
   const [docs, setDocs] = useState<any[]>([])
   const [docsLoading, setDocsLoading] = useState(false)
+  useEffect(() => {
+    function onKey(ev: KeyboardEvent) {
+      if (ev.key === 'Escape' && docsEmployeeId) closeDocs()
+    }
+    if (docsEmployeeId) window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [docsEmployeeId])
 
   const pages = useMemo(() => Math.max(1, Math.ceil(total / pageSize) || 1), [total, pageSize])
 
@@ -152,6 +160,11 @@ export default function Employees() {
           headers: { 'Content-Type': 'multipart/form-data' },
         })
         notify({ type: 'success', message: 'Document uploaded' })
+        if (docsEmployeeId === id) {
+          // refresh list in drawer if open for same employee
+          const { data } = await http.get(`/employees/${id}/documents`)
+          setDocs(data?.data || [])
+        }
       } catch (err: any) {
         const m = err?.response?.data?.error?.message || 'Failed to upload document'
         notify({ type: 'error', message: m })
@@ -162,10 +175,11 @@ export default function Employees() {
     input.click()
   }
 
-  const openDocs = async (id: string) => {
+  const openDocs = async (id: string, name?: string) => {
     try {
       setDocsLoading(true)
       setDocsEmployeeId(id)
+      setDocsEmployeeName(name || null)
       const { data } = await http.get(`/employees/${id}/documents`)
       setDocs(data?.data || [])
     } catch (err: any) {
@@ -174,7 +188,7 @@ export default function Employees() {
     } finally { setDocsLoading(false) }
   }
 
-  const closeDocs = () => { setDocsEmployeeId(null); setDocs([]) }
+  const closeDocs = () => { setDocsEmployeeId(null); setDocsEmployeeName(null); setDocs([]) }
 
   const downloadDoc = async (empId: string, d: any) => {
     try {
@@ -363,12 +377,7 @@ export default function Employees() {
                         <div className="flex items-center gap-2">
                           <button onClick={(ev) => { ev.stopPropagation(); toggleArchive(e) }} className="px-2 py-1 rounded border border-gray-300 dark:border-neutral-700">{e.status === 'ACTIVE' ? 'Archive' : 'Activate'}</button>
                           <button
-                            onClick={(ev) => { ev.stopPropagation(); triggerUpload(e.id) }}
-                            disabled={uploadingId === e.id}
-                            className="px-2 py-1 rounded border border-gray-300 dark:border-neutral-700 disabled:opacity-50"
-                          >{uploadingId === e.id ? 'Uploading…' : 'Upload Doc'}</button>
-                          <button
-                            onClick={(ev) => { ev.stopPropagation(); openDocs(e.id) }}
+                            onClick={(ev) => { ev.stopPropagation(); openDocs(e.id, e.name) }}
                             className="px-2 py-1 rounded border border-gray-300 dark:border-neutral-700"
                           >Docs</button>
                         </div>
@@ -381,32 +390,66 @@ export default function Employees() {
           </table>
         </div>
         {docsEmployeeId && (
-          <div className="mt-4 border border-gray-200 dark:border-neutral-700 rounded p-3">
-            <div className="flex items-center justify-between mb-2">
-              <div className="font-medium">Documents</div>
-              <button onClick={closeDocs} className="px-2 py-1 rounded border border-gray-300 dark:border-neutral-700">Close</button>
+          <>
+            {/* Overlay */}
+            <div
+              className="fixed inset-0 bg-black/30 z-40"
+              onClick={closeDocs}
+              aria-hidden="true"
+            />
+            {/* Drawer */}
+            <div role="dialog" aria-modal="true" className="fixed right-0 top-0 h-full w-[420px] max-w-[90vw] bg-white dark:bg-neutral-900 border-l border-gray-200 dark:border-neutral-800 shadow-xl z-50 flex flex-col">
+              <div className="sticky top-0 px-4 py-3 border-b border-gray-200 dark:border-neutral-800 flex items-center justify-between">
+                <div className="min-w-0">
+                  <div className="text-sm opacity-70">Documents</div>
+                  <div className="font-medium truncate">{docsEmployeeName || 'Employee'}</div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => docsEmployeeId && triggerUpload(docsEmployeeId)}
+                    disabled={!!uploadingId}
+                    className="px-2 py-1 rounded border border-gray-300 dark:border-neutral-700 disabled:opacity-50 flex items-center gap-1"
+                    title="Upload"
+                    aria-label="Upload"
+                  >
+                    <PaperClipIcon className="h-4 w-4" />
+                    <span className="hidden sm:inline">Upload</span>
+                  </button>
+                  <button onClick={closeDocs} className="p-2 rounded border border-gray-300 dark:border-neutral-700" title="Close" aria-label="Close" autoFocus>
+                    <XMarkIcon className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+              <div className="px-4 py-3 overflow-y-auto">
+                {docsLoading ? (
+                  <div className="text-sm opacity-70">Loading…</div>
+                ) : docs.length === 0 ? (
+                  <div className="text-sm opacity-70">
+                    No documents yet. Click <span className="font-medium">Upload</span> to add one.
+                  </div>
+                ) : (
+                  <ul className="divide-y divide-gray-200 dark:divide-neutral-800">
+                    {docs.map((d) => (
+                      <li key={d.id} className="py-2 flex items-center justify-between gap-2">
+                        <div className="min-w-0">
+                          <div className="truncate font-medium">{d.filename}</div>
+                          <div className="text-xs opacity-70">{d.mime} • {formatSize(d.size_bytes)} • {new Date(d.created_at).toLocaleString()}</div>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <button onClick={() => downloadDoc(docsEmployeeId, d)} className="p-2 rounded border border-gray-300 dark:border-neutral-700" title="Download" aria-label="Download">
+                            <ArrowDownTrayIcon className="h-4 w-4" />
+                          </button>
+                          <button onClick={() => deleteDoc(docsEmployeeId!, d)} className="p-2 rounded border border-gray-300 dark:border-neutral-700" title="Delete" aria-label="Delete">
+                            <TrashIcon className="h-4 w-4" />
+                          </button>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
             </div>
-            {docsLoading ? (
-              <div className="text-sm opacity-70">Loading…</div>
-            ) : docs.length === 0 ? (
-              <div className="text-sm opacity-70">No documents uploaded.</div>
-            ) : (
-              <ul className="divide-y divide-gray-200 dark:divide-neutral-700">
-                {docs.map((d) => (
-                  <li key={d.id} className="py-2 flex items-center justify-between">
-                    <div className="min-w-0">
-                      <div className="truncate">{d.filename}</div>
-                      <div className="text-xs opacity-70">{d.mime} • {formatSize(d.size_bytes)} • {new Date(d.created_at).toLocaleString()}</div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <button onClick={() => downloadDoc(docsEmployeeId, d)} className="px-2 py-1 rounded border border-gray-300 dark:border-neutral-700">Download</button>
-                      <button onClick={() => deleteDoc(docsEmployeeId!, d)} className="px-2 py-1 rounded border border-gray-300 dark:border-neutral-700">Delete</button>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
+          </>
         )}
         <div className="flex items-center justify-between mt-3 text-sm border-t border-gray-200 dark:border-neutral-700 pt-3 sticky bottom-0 bg-white dark:bg-neutral-800">
           <div className="opacity-70">Page {page} of {pages} | {total} total</div>
