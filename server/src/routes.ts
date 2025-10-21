@@ -16,6 +16,97 @@ routes.get('/healthz', async (_req, res) => {
   res.json({ ok: true, db });
 });
 
+// HRW-DASH-1: KPI Cards
+routes.get('/dashboard/kpis', authGuard('HR'), async (_req, res, next) => {
+  try {
+    const weekStart = new Date();
+    // Compute Monday 00:00 of current week in server time
+    const day = weekStart.getDay(); // 0=Sun .. 6=Sat
+    const diffToMonday = (day === 0 ? -6 : 1 - day); // if Sunday, go back 6 days
+    weekStart.setHours(0,0,0,0);
+    weekStart.setDate(weekStart.getDate() + diffToMonday);
+    const weekEnd = new Date(weekStart.getTime() + 7 * 24 * 3600 * 1000);
+
+    const qEmployees = pool.query(`SELECT COUNT(*)::int AS c FROM employees WHERE status = 'ACTIVE'`);
+    const qLeaveToday = pool.query(
+      `SELECT COUNT(*)::int AS c
+         FROM leave_requests
+        WHERE status = 'APPROVED'
+          AND date_from <= CURRENT_DATE
+          AND date_to >= CURRENT_DATE`
+    );
+    const qLeavePending = pool.query(
+      `SELECT COUNT(*)::int AS c FROM leave_requests WHERE status = 'PENDING'`
+    );
+    const qMeetingsWeek = pool.query(
+      `SELECT COUNT(*)::int AS c
+         FROM meetings
+        WHERE start_at >= $1 AND start_at < $2 AND status <> 'CANCELLED'`,
+      [weekStart.toISOString(), weekEnd.toISOString()]
+    );
+
+    const [employees, leaveToday, leavePending, meetings] = await Promise.all([
+      qEmployees, qLeaveToday, qLeavePending, qMeetingsWeek
+    ]);
+
+    res.json({
+      employeesTotal: employees.rows?.[0]?.c || 0,
+      onLeaveToday: leaveToday.rows?.[0]?.c || 0,
+      leavePending: leavePending.rows?.[0]?.c || 0,
+      meetingsThisWeek: meetings.rows?.[0]?.c || 0,
+    });
+  } catch (e) { next(e) }
+});
+
+// HRW-DASH-2: Recent Activity (aggregated)
+routes.get('/dashboard/activity', authGuard('HR'), async (req, res, next) => {
+  try {
+    const limitRaw = Number(req.query.limit || 10) || 10
+    const limit = Math.max(1, Math.min(100, limitRaw))
+    const { rows } = await pool.query(
+      `SELECT * FROM (
+         SELECT created_at AS at, 'EMPLOYEE' AS kind, id::text AS ref, name AS title, '/employees' AS link FROM employees
+         UNION ALL
+         SELECT created_at AS at, 'LEAVE' AS kind, id::text AS ref, NULL::text AS title, '/attendance' AS link FROM leave_requests
+         UNION ALL
+         SELECT created_at AS at, 'MEETING' AS kind, id::text AS ref, title AS title, '/meetings' AS link FROM meetings
+         UNION ALL
+         SELECT created_at AS at, 'DOCUMENT' AS kind, id::text AS ref, filename AS title, '/employees' AS link FROM employee_documents
+       ) t
+       ORDER BY at DESC
+       LIMIT $1`,
+      [limit]
+    )
+    res.json({ data: rows })
+  } catch (e) { next(e) }
+})
+
+// Minimal meetings list by date range for calendar
+routes.get('/meetings', authGuard('HR'), async (req, res, next) => {
+  try {
+    const fromRaw = (req.query.from || '').toString().trim()
+    const toRaw = (req.query.to || '').toString().trim()
+    let from = new Date()
+    let to = new Date(from.getTime() + 30 * 24 * 3600 * 1000)
+    if (fromRaw) {
+      const d = new Date(fromRaw)
+      if (!isNaN(d.getTime())) from = d
+    }
+    if (toRaw) {
+      const d = new Date(toRaw)
+      if (!isNaN(d.getTime())) to = d
+    }
+    const { rows } = await pool.query(
+      `SELECT id, title, start_at, end_at, status
+         FROM meetings
+        WHERE start_at >= $1 AND start_at < $2 AND status <> 'CANCELLED'
+        ORDER BY start_at ASC`,
+      [from.toISOString(), to.toISOString()]
+    )
+    res.json({ data: rows })
+  } catch (e) { next(e) }
+})
+
 // HRW-AUTH-1: Login Endpoint & Flow
 routes.post('/auth/login', async (req, res, next) => {
   try {
