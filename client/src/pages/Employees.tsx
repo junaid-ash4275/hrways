@@ -31,6 +31,9 @@ export default function Employees() {
   const [editRow, setEditRow] = useState<any>({})
   const editingRowRef = useRef<HTMLTableRowElement | null>(null)
   const [uploadingId, setUploadingId] = useState<string | null>(null)
+  const [docsEmployeeId, setDocsEmployeeId] = useState<string | null>(null)
+  const [docs, setDocs] = useState<any[]>([])
+  const [docsLoading, setDocsLoading] = useState(false)
 
   const pages = useMemo(() => Math.max(1, Math.ceil(total / pageSize) || 1), [total, pageSize])
 
@@ -157,6 +160,49 @@ export default function Employees() {
       }
     }
     input.click()
+  }
+
+  const openDocs = async (id: string) => {
+    try {
+      setDocsLoading(true)
+      setDocsEmployeeId(id)
+      const { data } = await http.get(`/employees/${id}/documents`)
+      setDocs(data?.data || [])
+    } catch (err: any) {
+      const m = err?.response?.data?.error?.message || 'Failed to load documents'
+      notify({ type: 'error', message: m })
+    } finally { setDocsLoading(false) }
+  }
+
+  const closeDocs = () => { setDocsEmployeeId(null); setDocs([]) }
+
+  const downloadDoc = async (empId: string, d: any) => {
+    try {
+      const resp = await http.get(`/employees/${empId}/documents/${d.id}/download`, { responseType: 'blob' })
+      const blob = new Blob([resp.data], { type: d.mime })
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = d.filename || 'file'
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      window.URL.revokeObjectURL(url)
+    } catch (err: any) {
+      const m = err?.response?.data?.error?.message || 'Failed to download document'
+      notify({ type: 'error', message: m })
+    }
+  }
+
+  const deleteDoc = async (empId: string, d: any) => {
+    try {
+      await http.delete(`/employees/${empId}/documents/${d.id}`)
+      setDocs((old) => old.filter((x) => x.id !== d.id))
+      notify({ type: 'success', message: 'Document deleted' })
+    } catch (err: any) {
+      const m = err?.response?.data?.error?.message || 'Failed to delete document'
+      notify({ type: 'error', message: m })
+    }
   }
 
   const toggleArchive = async (row: any) => {
@@ -321,6 +367,10 @@ export default function Employees() {
                             disabled={uploadingId === e.id}
                             className="px-2 py-1 rounded border border-gray-300 dark:border-neutral-700 disabled:opacity-50"
                           >{uploadingId === e.id ? 'Uploading…' : 'Upload Doc'}</button>
+                          <button
+                            onClick={(ev) => { ev.stopPropagation(); openDocs(e.id) }}
+                            className="px-2 py-1 rounded border border-gray-300 dark:border-neutral-700"
+                          >Docs</button>
                         </div>
                       </td>
                     </tr>
@@ -330,6 +380,34 @@ export default function Employees() {
             </tbody>
           </table>
         </div>
+        {docsEmployeeId && (
+          <div className="mt-4 border border-gray-200 dark:border-neutral-700 rounded p-3">
+            <div className="flex items-center justify-between mb-2">
+              <div className="font-medium">Documents</div>
+              <button onClick={closeDocs} className="px-2 py-1 rounded border border-gray-300 dark:border-neutral-700">Close</button>
+            </div>
+            {docsLoading ? (
+              <div className="text-sm opacity-70">Loading…</div>
+            ) : docs.length === 0 ? (
+              <div className="text-sm opacity-70">No documents uploaded.</div>
+            ) : (
+              <ul className="divide-y divide-gray-200 dark:divide-neutral-700">
+                {docs.map((d) => (
+                  <li key={d.id} className="py-2 flex items-center justify-between">
+                    <div className="min-w-0">
+                      <div className="truncate">{d.filename}</div>
+                      <div className="text-xs opacity-70">{d.mime} • {formatSize(d.size_bytes)} • {new Date(d.created_at).toLocaleString()}</div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button onClick={() => downloadDoc(docsEmployeeId, d)} className="px-2 py-1 rounded border border-gray-300 dark:border-neutral-700">Download</button>
+                      <button onClick={() => deleteDoc(docsEmployeeId!, d)} className="px-2 py-1 rounded border border-gray-300 dark:border-neutral-700">Delete</button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
         <div className="flex items-center justify-between mt-3 text-sm border-t border-gray-200 dark:border-neutral-700 pt-3 sticky bottom-0 bg-white dark:bg-neutral-800">
           <div className="opacity-70">Page {page} of {pages} | {total} total</div>
           <nav aria-label="Pagination" className="flex items-center gap-2">
@@ -353,7 +431,7 @@ export default function Employees() {
             >
               <ChevronDoubleLeftIcon className="h-4 w-4" />
               <span className="hidden sm:inline">First</span>
-            </button>
+      </button>
             <button
               disabled={page <= 1 || loadingList}
               onClick={() => fetchList(page - 1, pageSize, q, fStatus, fDept)}
@@ -472,6 +550,15 @@ export default function Employees() {
       )}
     </section>
   )
+}
+
+function formatSize(n?: number) {
+  if (!n || n <= 0) return '0 B'
+  const units = ['B','KB','MB','GB']
+  let i = 0
+  let x = n
+  while (x >= 1024 && i < units.length - 1) { x /= 1024; i++ }
+  return `${x.toFixed(i === 0 ? 0 : 1)} ${units[i]}`
 }
 
 

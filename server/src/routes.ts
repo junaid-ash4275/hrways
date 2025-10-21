@@ -158,6 +158,65 @@ routes.post('/employees/:id/documents', authGuard('HR'), upload.single('file'), 
   } catch (e) { next(e) }
 })
 
+// HRW-EMP-6: List/Download/Delete Documents
+routes.get('/employees/:id/documents', authGuard('HR'), async (req, res, next) => {
+  try {
+    const employeeId = req.params.id
+    const { rows } = await pool.query(
+      `SELECT id, filename, mime, size_bytes, sha256, created_at
+         FROM employee_documents
+        WHERE employee_id = $1
+        ORDER BY created_at DESC`,
+      [employeeId]
+    )
+    res.json({ data: rows })
+  } catch (e) { next(e) }
+})
+
+routes.get('/employees/:id/documents/:docId/download', authGuard('HR'), async (req, res, next) => {
+  try {
+    const employeeId = req.params.id
+    const docId = req.params.docId
+    const { rows } = await pool.query(
+      `SELECT id, employee_id, filename, mime, size_bytes, content
+         FROM employee_documents
+        WHERE id = $1 AND employee_id = $2`,
+      [docId, employeeId]
+    )
+    if (rows.length === 0) return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Document not found' } })
+    const r = rows[0]
+    const filename = String(r.filename || 'file')
+
+    // Basic audit (best-effort; errors ignored)
+    try {
+      const user = (req as any).user as { id: string } | undefined
+      const userId = user?.id || null
+      const ip = (req.headers['x-forwarded-for'] as string) || req.ip
+      const ua = (req.headers['user-agent'] as string) || ''
+      await pool.query(
+        `INSERT INTO document_download_audit (doc_id, employee_id, user_id, ip, user_agent)
+         VALUES ($1,$2,$3,$4,$5)`,
+        [docId, employeeId, userId, ip, ua]
+      )
+    } catch {}
+
+    res.setHeader('Content-Type', r.mime)
+    if (r.size_bytes) res.setHeader('Content-Length', String(r.size_bytes))
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`)
+    return res.send(r.content)
+  } catch (e) { next(e) }
+})
+
+routes.delete('/employees/:id/documents/:docId', authGuard('HR'), async (req, res, next) => {
+  try {
+    const employeeId = req.params.id
+    const docId = req.params.docId
+    const del = await pool.query('DELETE FROM employee_documents WHERE id = $1 AND employee_id = $2 RETURNING id', [docId, employeeId])
+    if (del.rows.length === 0) return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Document not found' } })
+    res.status(204).end()
+  } catch (e) { next(e) }
+})
+
 // HRW-RESET-1: Request password reset (OTP)
 routes.post('/auth/request-reset', async (req, res, next) => {
   try {
@@ -656,3 +715,4 @@ routes.post('/me/change-password', authGuard(), async (req, res, next) => {
     next(e)
   }
 })
+
