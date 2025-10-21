@@ -442,15 +442,6 @@ export default function Employees() {
                     className="w-full pl-8 pr-8 py-2 rounded border border-gray-300 dark:border-neutral-700 bg-white dark:bg-neutral-900"
                     aria-label="Search documents"
                   />
-                  {docsQuery && (
-                    <button
-                      onClick={() => setDocsQuery('')}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 text-sm opacity-70 hover:opacity-100"
-                      aria-label="Clear search"
-                    >
-                      Clear
-                    </button>
-                  )}
                 </div>
                 {docsLoading ? (
                   <div className="text-sm opacity-70">Loading…</div>
