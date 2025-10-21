@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react'
-import { ChevronLeftIcon, ChevronRightIcon, ChevronDoubleLeftIcon, ChevronDoubleRightIcon, PaperClipIcon, ArrowDownTrayIcon, TrashIcon, XMarkIcon } from '@heroicons/react/24/outline'
+import { ChevronLeftIcon, ChevronRightIcon, ChevronDoubleLeftIcon, ChevronDoubleRightIcon, PaperClipIcon, ArrowDownTrayIcon, TrashIcon, XMarkIcon, MagnifyingGlassIcon } from '@heroicons/react/24/outline'
 import { http } from '../api/http'
 import { useUI } from '../ui/UIContext'
 
@@ -35,6 +35,16 @@ export default function Employees() {
   const [docsEmployeeName, setDocsEmployeeName] = useState<string | null>(null)
   const [docs, setDocs] = useState<any[]>([])
   const [docsLoading, setDocsLoading] = useState(false)
+  const [docsQuery, setDocsQuery] = useState('')
+  const filteredDocs = useMemo(() => {
+    const q = docsQuery.trim().toLowerCase()
+    if (!q) return docs
+    return docs.filter((d) =>
+      String(d.filename || '').toLowerCase().includes(q) ||
+      String(d.mime || '').toLowerCase().includes(q) ||
+      String(d.sha256 || '').toLowerCase().includes(q)
+    )
+  }, [docs, docsQuery])
   useEffect(() => {
     function onKey(ev: KeyboardEvent) {
       if (ev.key === 'Escape' && docsEmployeeId) closeDocs()
@@ -188,7 +198,7 @@ export default function Employees() {
     } finally { setDocsLoading(false) }
   }
 
-  const closeDocs = () => { setDocsEmployeeId(null); setDocsEmployeeName(null); setDocs([]) }
+  const closeDocs = () => { setDocsEmployeeId(null); setDocsEmployeeName(null); setDocs([]); setDocsQuery('') }
 
   const downloadDoc = async (empId: string, d: any) => {
     try {
@@ -421,15 +431,38 @@ export default function Employees() {
                 </div>
               </div>
               <div className="px-4 py-3 overflow-y-auto">
+                {/* Search */}
+                <div className="mb-3 relative">
+                  <MagnifyingGlassIcon className="h-4 w-4 absolute left-2 top-1/2 -translate-y-1/2 opacity-60" />
+                  <input
+                    type="search"
+                    value={docsQuery}
+                    onChange={(e) => setDocsQuery(e.target.value)}
+                    placeholder="Search documents…"
+                    className="w-full pl-8 pr-8 py-2 rounded border border-gray-300 dark:border-neutral-700 bg-white dark:bg-neutral-900"
+                    aria-label="Search documents"
+                  />
+                  {docsQuery && (
+                    <button
+                      onClick={() => setDocsQuery('')}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-sm opacity-70 hover:opacity-100"
+                      aria-label="Clear search"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
                 {docsLoading ? (
                   <div className="text-sm opacity-70">Loading…</div>
                 ) : docs.length === 0 ? (
                   <div className="text-sm opacity-70">
                     No documents yet. Click <span className="font-medium">Upload</span> to add one.
                   </div>
+                ) : filteredDocs.length === 0 ? (
+                  <div className="text-sm opacity-70">No documents match your search.</div>
                 ) : (
                   <ul className="divide-y divide-gray-200 dark:divide-neutral-800">
-                    {docs.map((d) => (
+                    {filteredDocs.map((d) => (
                       <li key={d.id} className="py-2 flex items-center justify-between gap-2">
                         <div className="min-w-0">
                           <div className="truncate font-medium">{d.filename}</div>
