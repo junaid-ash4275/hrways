@@ -24,5 +24,6 @@ export const env = {
   OTP_MAX_ATTEMPTS: Number(process.env.OTP_MAX_ATTEMPTS || 5),
   RESET_TOKEN_TTL_MIN: Number(process.env.RESET_TOKEN_TTL_MIN || 15),
   MAX_UPLOAD_MB: Number(process.env.MAX_UPLOAD_MB || 5),
-  ALLOWED_MIME: (process.env.ALLOWED_MIME || 'application/pdf,image/jpeg,image/png')
+  ALLOWED_MIME: (process.env.ALLOWED_MIME || 'application/pdf,image/jpeg,image/png'),
+  ORG_TZ_OFFSET: process.env.ORG_TZ_OFFSET || '+05:00'
 };

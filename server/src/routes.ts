@@ -107,6 +107,224 @@ routes.get('/meetings', authGuard('HR'), async (req, res, next) => {
   } catch (e) { next(e) }
 })
 
+// HRW-ATT-1: Record Attendance
+routes.post('/attendance', authGuard('HR'), async (req, res, next) => {
+  try {
+    const b = req.body || {}
+    let employeeId = (b.employee_id || '').toString().trim()
+    const employeeCode = (b.employee_code || '').toString().trim()
+    const dateFrom = ((b.date_from || b.work_date) || '').toString().trim()
+    const dateTo = (b.date_to || '').toString().trim()
+    const clockIn = (b.clock_in || '').toString().trim()
+    const clockOut = (b.clock_out || '').toString().trim()
+    const status = (b.status || 'ABSENT').toString().trim().toUpperCase()
+    const includeWeekends = String(b.includeWeekends || '').toLowerCase() === 'true'
+
+    const errors: string[] = []
+    if (!employeeId && !employeeCode) errors.push('employee_id or employee_code is required')
+    if (!dateFrom) errors.push('date_from (or work_date) is required')
+    if (dateFrom && !/^\d{4}-\d{2}-\d{2}$/.test(dateFrom)) errors.push('date_from must be YYYY-MM-DD')
+    if (dateTo && !/^\d{4}-\d{2}-\d{2}$/.test(dateTo)) errors.push('date_to must be YYYY-MM-DD')
+    if (status && !['PRESENT','ABSENT','LEAVE','HALF_DAY'].includes(status)) errors.push('status must be one of PRESENT, ABSENT, LEAVE, HALF_DAY')
+    if (clockIn && !/^\d{2}:\d{2}$/.test(clockIn)) errors.push('clock_in must be HH:MM')
+    if (clockOut && !/^\d{2}:\d{2}$/.test(clockOut)) errors.push('clock_out must be HH:MM')
+    if (errors.length) return res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'Invalid attendance data', details: errors } })
+
+    // Resolve employee by code if needed
+    if (!employeeId && employeeCode) {
+      const e = await pool.query('SELECT id FROM employees WHERE employee_code = $1', [employeeCode])
+      if (e.rows.length === 0) return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Employee not found' } })
+      employeeId = e.rows[0].id as string
+    }
+
+    // Build timestamps (UTC for MVP)
+    function toTs(date: string, hm: string) {
+      try {
+        // use organization timezone offset to build local timestamp
+        const off = env.ORG_TZ_OFFSET || '+05:00'
+        const s = `${date}T${hm}:00${off}`
+        const d = new Date(s)
+        if (isNaN(d.getTime())) return null
+        return d.toISOString()
+      } catch { return null }
+    }
+    // Determine range (inclusive)
+    const from = new Date(`${dateFrom}T00:00:00Z`)
+    const to = new Date(`${(dateTo || dateFrom)}T00:00:00Z`)
+    if (isNaN(from.getTime()) || isNaN(to.getTime()) || from > to) {
+      return res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'Invalid date range' } })
+    }
+    const days: string[] = []
+    for (let d = new Date(from); d <= to; d = new Date(d.getTime() + 86400000)) {
+      const day = d.getUTCDay() // 0 Sun..6 Sat
+      const isWeekend = (day === 0 || day === 6)
+      if (!includeWeekends && isWeekend) continue
+      days.push(d.toISOString().slice(0,10))
+    }
+    const ci = clockIn ? toTs(dateFrom, clockIn) : null
+    const co = clockOut ? toTs(dateFrom, clockOut) : null
+    await pool.query('BEGIN')
+    try {
+      for (const d of days) {
+        await pool.query(
+          `INSERT INTO attendance (employee_id, work_date, clock_in, clock_out, status)
+           VALUES ($1,$2,$3,$4,$5)
+           ON CONFLICT (employee_id, work_date) DO UPDATE SET status = EXCLUDED.status, clock_in = EXCLUDED.clock_in, clock_out = EXCLUDED.clock_out`,
+          [employeeId, d, ci, co, status]
+        )
+      }
+      await pool.query('COMMIT')
+    } catch (e) {
+      await pool.query('ROLLBACK')
+      throw e
+    }
+    return res.status(201).json({ ok: true, employee_id: employeeId, status, days })
+  } catch (e) { next(e) }
+})
+
+// HRW-ATT-3: List & Filter Attendance
+routes.get('/attendance', authGuard('HR'), async (req, res, next) => {
+  try {
+    const page = Math.max(1, Number(req.query.page || 1) || 1)
+    const pageSizeRaw = Number(req.query.pageSize || 10) || 10
+    const pageSize = Math.max(1, Math.min(100, pageSizeRaw))
+    const offset = (page - 1) * pageSize
+
+    const employeeId = (req.query.employee_id || '').toString().trim()
+    const employeeCode = (req.query.employee_code || '').toString().trim()
+    const q = (req.query.q || '').toString().trim()
+    const from = (req.query.from || '').toString().trim()
+    const to = (req.query.to || '').toString().trim()
+    const includeComputed = String(req.query.includeComputed || '').toLowerCase() === 'true'
+    const includeWeekends = String(req.query.includeWeekends || '').toLowerCase() === 'true'
+
+    // Resolve employees filter set first to avoid placeholder offset issues
+    const empWhere: string[] = []
+    const empParams: any[] = []
+    if (employeeId) { empWhere.push(`id = $${empParams.length + 1}`); empParams.push(employeeId) }
+    if (employeeCode) { empWhere.push(`employee_code = $${empParams.length + 1}`); empParams.push(employeeCode) }
+    if (q) { empWhere.push(`(employee_code ILIKE $${empParams.length + 1} OR name ILIKE $${empParams.length + 1} OR email ILIKE $${empParams.length + 1})`); empParams.push(`%${q}%`) }
+    const empRes = await pool.query(
+      `SELECT id, employee_code, name FROM employees ${empWhere.length ? 'WHERE ' + empWhere.join(' AND ') : ''}`,
+      empParams
+    )
+    const empIds: string[] = empRes.rows.map((r: any) => r.id)
+    if (empIds.length === 0) return res.json({ data: [], page, pageSize, total: 0 })
+
+    if (!includeComputed) {
+      // Exceptions-only view
+      const detail = String(req.query.detail || '').toLowerCase() === 'true'
+      if (detail) {
+        // Return raw exception rows (paginated) for selected employees
+        const filters: string[] = [`a.employee_id = ANY($1::uuid[])`]
+        const params: any[] = [empIds]
+        let pi = 2
+        if (from) { filters.push(`a.work_date >= $${pi++}`); params.push(from) }
+        if (to) { filters.push(`a.work_date <= $${pi++}`); params.push(to) }
+        const whereSql = `WHERE ${filters.join(' AND ')}`
+
+        const totalRes = await pool.query(
+          `SELECT COUNT(*)::int AS c FROM attendance a ${whereSql}`,
+          params
+        )
+        const total = totalRes.rows?.[0]?.c || 0
+        if (total === 0) return res.json({ data: [], page, pageSize, total: 0 })
+
+        const listRes = await pool.query(
+          `SELECT a.employee_id, e.employee_code, e.name,
+                  a.work_date AS start_date,
+                  a.work_date AS end_date,
+                  1::int AS days,
+                  a.status
+             FROM attendance a
+             JOIN employees e ON e.id = a.employee_id
+             ${whereSql}
+            ORDER BY a.work_date DESC, e.name ASC
+            LIMIT $${pi} OFFSET $${pi + 1}`,
+          [...params, pageSize, offset]
+        )
+        return res.json({ data: listRes.rows, page, pageSize, total })
+      }
+
+      // Aggregate one row per employee with date range and status summary
+      const filters: string[] = [`a.employee_id = ANY($1::uuid[])`]
+      const params: any[] = [empIds]
+      let pi = 2
+      if (from) { filters.push(`a.work_date >= $${pi++}`); params.push(from) }
+      if (to) { filters.push(`a.work_date <= $${pi++}`); params.push(to) }
+      const whereSql = `WHERE ${filters.join(' AND ')}`
+      const totalRes = await pool.query(
+        `SELECT COUNT(*)::int AS c FROM (
+           SELECT a.employee_id FROM attendance a ${whereSql} GROUP BY a.employee_id
+         ) x`,
+        params
+      )
+      const total = totalRes.rows?.[0]?.c || 0
+      if (total === 0) return res.json({ data: [], page, pageSize, total: 0 })
+      const listRes = await pool.query(
+        `WITH filtered AS (
+           SELECT a.employee_id, a.work_date, a.status
+             FROM attendance a
+             ${whereSql}
+         ), grouped AS (
+           SELECT employee_id,
+                  MIN(work_date) AS start_date,
+                  MAX(work_date) AS end_date,
+                  COUNT(*)::int AS days,
+                  CASE WHEN COUNT(DISTINCT status) = 1 THEN MIN(status) ELSE 'MIXED' END AS status
+             FROM filtered
+            GROUP BY employee_id
+         )
+         SELECT g.employee_id, e.employee_code, e.name, g.start_date, g.end_date, g.days, g.status
+           FROM grouped g
+           JOIN employees e ON e.id = g.employee_id
+          ORDER BY e.name ASC
+          LIMIT $${pi} OFFSET $${pi + 1}`,
+        [...params, pageSize, offset]
+      )
+      return res.json({ data: listRes.rows, page, pageSize, total })
+    }
+
+    // Computed view: require a from/to and at least one employee filter to avoid huge cross join
+    if (!from || !to) {
+      return res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'from and to are required for computed view' } })
+    }
+    // Build day filter for weekends
+    const weekendFilter = includeWeekends ? '' : 'AND EXTRACT(DOW FROM d.day) NOT IN (0,6)'
+    // Total rows = number of selected employees * number of included days
+    // Compute total via SQL
+    const daysCountRes = await pool.query(
+      `SELECT COUNT(*)::int AS c FROM generate_series($1::date, $2::date, interval '1 day') d(day)
+        WHERE TRUE ${weekendFilter}`,
+      [from, to]
+    )
+    const total = (daysCountRes.rows?.[0]?.c || 0) * empIds.length
+    if (total === 0) return res.json({ data: [], page, pageSize, total: 0 })
+
+    // List rows with computed status (attendance exceptions override, approved leaves imply LEAVE, else PRESENT)
+    const list = await pool.query(
+      `WITH days AS (
+         SELECT day FROM generate_series($1::date, $2::date, interval '1 day') d(day)
+         WHERE TRUE ${weekendFilter}
+       ), emps AS (
+         SELECT id, employee_code, name FROM employees WHERE id = ANY($3::uuid[])
+       )
+       SELECT e.id AS employee_id, e.employee_code, e.name, d.day AS work_date,
+              COALESCE(a.status,
+                CASE WHEN lr.id IS NOT NULL THEN 'LEAVE' ELSE 'PRESENT' END
+              ) AS status
+         FROM emps e
+         CROSS JOIN days d
+         LEFT JOIN attendance a ON a.employee_id = e.id AND a.work_date = d.day
+         LEFT JOIN leave_requests lr ON lr.employee_id = e.id AND lr.status = 'APPROVED' AND lr.date_from <= d.day AND lr.date_to >= d.day
+        ORDER BY d.day DESC, e.name ASC
+        LIMIT $4 OFFSET $5`,
+      [from, to, empIds, pageSize, offset]
+    )
+    return res.json({ data: list.rows, page, pageSize, total })
+  } catch (e) { next(e) }
+})
+
 // HRW-AUTH-1: Login Endpoint & Flow
 routes.post('/auth/login', async (req, res, next) => {
   try {
@@ -228,6 +446,280 @@ routes.get('/employees/export.csv', authGuard('HR'), async (req, res, next) => {
       res.write(line + '\n');
     }
     res.end();
+  } catch (e) { next(e) }
+});
+
+// HRW-ATT-4: Export Attendance CSV & PDF Summary
+routes.get('/attendance/export.csv', authGuard('HR'), async (req, res, next) => {
+  try {
+    const employeeId = (req.query.employee_id || '').toString().trim();
+    const employeeCode = (req.query.employee_code || '').toString().trim();
+    const q = (req.query.q || '').toString().trim();
+    const from = (req.query.from || '').toString().trim();
+    const to = (req.query.to || '').toString().trim();
+    const includeComputed = String(req.query.includeComputed || '').toLowerCase() === 'true';
+    const includeWeekends = String(req.query.includeWeekends || '').toLowerCase() === 'true';
+
+    // Resolve employee set
+    const empWhere: string[] = [];
+    const empParams: any[] = [];
+    if (employeeId) { empWhere.push(`id = $${empParams.length + 1}`); empParams.push(employeeId); }
+    if (employeeCode) { empWhere.push(`employee_code = $${empParams.length + 1}`); empParams.push(employeeCode); }
+    if (q) { empWhere.push(`(employee_code ILIKE $${empParams.length + 1} OR name ILIKE $${empParams.length + 1} OR email ILIKE $${empParams.length + 1})`); empParams.push(`%${q}%`); }
+    const empRes = await pool.query(
+      `SELECT id, employee_code, name FROM employees ${empWhere.length ? 'WHERE ' + empWhere.join(' AND ') : ''} ORDER BY name ASC`,
+      empParams
+    );
+    const emps = empRes.rows as { id: string, employee_code: string, name: string }[];
+    const empIds = emps.map(r => r.id);
+    if (empIds.length === 0) {
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="attendance_empty.csv"`);
+      res.end('Employee Code,Name,Work Date,Status\n');
+      return;
+    }
+
+    // CSV helpers
+    function escapeFormula(s: string) {
+      if (!s) return s;
+      const c = s[0];
+      return (c === '=' || c === '+' || c === '-' || c === '@') ? (`'` + s) : s;
+    }
+    function toCsvField(v: any): string {
+      if (v === null || v === undefined) return '';
+      let s = typeof v === 'string' ? v : (v instanceof Date ? v.toISOString() : String(v));
+      if (/^\d{4}-\d{2}-\d{2}T/.test(s)) s = s.slice(0, 10);
+      s = escapeFormula(s);
+      if (/[",\n\r]/.test(s)) {
+        s = '"' + s.replace(/"/g, '""') + '"';
+      }
+      return s;
+    }
+    function slug(v: string) { return v.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 40); }
+    const ts = new Date();
+    const stamp = `${ts.getFullYear()}${String(ts.getMonth()+1).padStart(2,'0')}${String(ts.getDate()).padStart(2,'0')}_${String(ts.getHours()).padStart(2,'0')}${String(ts.getMinutes()).padStart(2,'0')}${String(ts.getSeconds()).padStart(2,'0')}`;
+    const parts: string[] = [];
+    if (from && to) parts.push(`${from}_to_${to}`);
+    if (includeComputed) parts.push('computed');
+    if (includeWeekends) parts.push('weekends');
+    if (q) parts.push(`q_${slug(q)}`);
+    const fname = `attendance_${stamp}${parts.length ? '_' + parts.join('_') : ''}.csv`;
+
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${fname}"`);
+
+    // Header row
+    res.write(['Employee Code','Name','Work Date','Status'].map(toCsvField).join(',') + '\n');
+
+    if (!includeComputed) {
+      // Exceptions-only export (no from/to required; export all filtered exceptions)
+      const filters: string[] = [`a.employee_id = ANY($1::uuid[])`];
+      const params: any[] = [empIds];
+      let pi = 2;
+      if (from) { filters.push(`a.work_date >= $${pi++}`); params.push(from); }
+      if (to) { filters.push(`a.work_date <= $${pi++}`); params.push(to); }
+      const whereSql = `WHERE ${filters.join(' AND ')}`;
+      const { rows } = await pool.query(
+        `SELECT a.employee_id, e.employee_code, e.name, a.work_date, a.status
+           FROM attendance a
+           JOIN employees e ON e.id = a.employee_id
+           ${whereSql}
+          ORDER BY a.work_date DESC, e.name ASC`,
+        params
+      );
+      for (const r of rows) {
+        const line = [r.employee_code, r.name, String(r.work_date).slice(0,10), r.status].map(toCsvField).join(',');
+        res.write(line + '\n');
+      }
+      res.end();
+      return;
+    }
+
+    // Computed view requires from/to
+    if (!from || !to) {
+      res.status(400);
+      res.end('from and to are required when includeComputed=true');
+      return;
+    }
+    const weekendFilter = includeWeekends ? '' : 'AND EXTRACT(DOW FROM d.day) NOT IN (0,6)';
+    const { rows } = await pool.query(
+      `WITH days AS (
+         SELECT day FROM generate_series($1::date, $2::date, interval '1 day') d(day)
+         WHERE TRUE ${weekendFilter}
+       ), emps AS (
+         SELECT id, employee_code, name FROM employees WHERE id = ANY($3::uuid[])
+       )
+       SELECT e.employee_code, e.name, d.day AS work_date,
+              COALESCE(a.status, 'PRESENT') AS status
+         FROM emps e
+         CROSS JOIN days d
+         LEFT JOIN attendance a ON a.employee_id = e.id AND a.work_date = d.day
+        ORDER BY d.day DESC, e.name ASC`,
+      [from, to, empIds]
+    );
+    for (const r of rows) {
+      const line = [r.employee_code, r.name, String(r.work_date).slice(0,10), r.status].map(toCsvField).join(',');
+      res.write(line + '\n');
+    }
+    res.end();
+  } catch (e) { next(e) }
+});
+
+routes.get('/attendance/summary.pdf', authGuard('HR'), async (req, res, next) => {
+  try {
+    const employeeId = (req.query.employee_id || '').toString().trim();
+    const employeeCode = (req.query.employee_code || '').toString().trim();
+    const q = (req.query.q || '').toString().trim();
+    const from = (req.query.from || '').toString().trim();
+    const to = (req.query.to || '').toString().trim();
+    const includeWeekends = String(req.query.includeWeekends || '').toLowerCase() === 'true';
+
+    if (!from || !to) {
+      return res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'from and to are required' } });
+    }
+
+    // Resolve employees
+    const empWhere: string[] = [];
+    const empParams: any[] = [];
+    if (employeeId) { empWhere.push(`id = $${empParams.length + 1}`); empParams.push(employeeId); }
+    if (employeeCode) { empWhere.push(`employee_code = $${empParams.length + 1}`); empParams.push(employeeCode); }
+    if (q) { empWhere.push(`(employee_code ILIKE $${empParams.length + 1} OR name ILIKE $${empParams.length + 1} OR email ILIKE $${empParams.length + 1})`); empParams.push(`%${q}%`); }
+    const empRes = await pool.query(
+      `SELECT id, employee_code, name FROM employees ${empWhere.length ? 'WHERE ' + empWhere.join(' AND ') : ''} ORDER BY name ASC`,
+      empParams
+    );
+    const emps = empRes.rows as { id: string, employee_code: string, name: string }[];
+    const empIds = emps.map(r => r.id);
+    if (empIds.length === 0) {
+      return res.status(400).json({ error: { code: 'NO_MATCH', message: 'No employees matched filters' } });
+    }
+
+    const weekendFilter = includeWeekends ? '' : 'AND EXTRACT(DOW FROM d.day) NOT IN (0,6)';
+    // Aggregate counts by employee and status using exceptions-only model (default PRESENT when no exception)
+    const agg = await pool.query(
+      `WITH days AS (
+         SELECT day FROM generate_series($1::date, $2::date, interval '1 day') d(day)
+         WHERE TRUE ${weekendFilter}
+       ), emps AS (
+         SELECT id, employee_code, name FROM employees WHERE id = ANY($3::uuid[])
+       ), joined AS (
+         SELECT e.id AS employee_id, e.employee_code, e.name, d.day AS work_date,
+                COALESCE(a.status, 'PRESENT') AS status
+           FROM emps e
+           CROSS JOIN days d
+           LEFT JOIN attendance a ON a.employee_id = e.id AND a.work_date = d.day
+       )
+       SELECT employee_id, employee_code, name, status, COUNT(*)::int AS cnt
+         FROM joined
+        GROUP BY employee_id, employee_code, name, status
+        ORDER BY name ASC, status ASC`,
+      [from, to, empIds]
+    );
+
+    // Pivot results into per-employee totals
+    type Row = { employee_id: string, employee_code: string, name: string, status: string, cnt: number };
+    const map = new Map<string, { code: string, name: string, present: number, absent: number, leave: number, half: number, total: number }>();
+    for (const r of (agg.rows as Row[])) {
+      const key = r.employee_id;
+      if (!map.has(key)) map.set(key, { code: r.employee_code, name: r.name, present: 0, absent: 0, leave: 0, half: 0, total: 0 });
+      const m = map.get(key)!;
+      if (r.status === 'PRESENT') m.present += r.cnt;
+      else if (r.status === 'ABSENT') m.absent += r.cnt;
+      else if (r.status === 'LEAVE') m.leave += r.cnt;
+      else if (r.status === 'HALF_DAY') m.half += r.cnt;
+      m.total += r.cnt;
+    }
+
+    // PDF
+    const PDFDocument = require('pdfkit');
+    const doc: any = new PDFDocument({ size: 'A4', margin: 40 });
+    const ts = new Date();
+    function applyOffset(date: Date, offset: string): Date {
+      // offset format "+HH:MM" or "-HH:MM"
+      const m = /([+-])(\d{2}):(\d{2})/.exec(offset || '+00:00');
+      if (!m) return date;
+      const sign = m[1] === '-' ? -1 : 1;
+      const h = parseInt(m[2], 10) * sign;
+      const mm = parseInt(m[3], 10) * sign;
+      const ms = (h * 60 + mm) * 60 * 1000;
+      return new Date(date.getTime() + ms);
+    }
+    function fmtDate(d: Date) {
+      const x = applyOffset(d, (env as any).ORG_TZ_OFFSET || '+00:00');
+      const y = x.getFullYear();
+      const m = String(x.getMonth()+1).padStart(2, '0');
+      const day = String(x.getDate()).padStart(2, '0');
+      const hh = String(x.getHours()).padStart(2, '0');
+      const mi = String(x.getMinutes()).padStart(2, '0');
+      return `${y}-${m}-${day} ${hh}:${mi}`;
+    }
+
+    const fname = `attendance_summary_${ts.getFullYear()}${String(ts.getMonth()+1).padStart(2,'0')}${String(ts.getDate()).padStart(2,'0')}_${String(ts.getHours()).padStart(2,'0')}${String(ts.getMinutes()).padStart(2,'0')}${String(ts.getSeconds()).padStart(2,'0')}.pdf`;
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${fname}"`);
+    doc.pipe(res);
+
+    // Header
+    doc.fontSize(16).text('Attendance Summary', { align: 'left' });
+    doc.moveDown(0.3);
+    doc.fontSize(10).fillColor('#555').text(`Period: ${from} to ${to}`);
+    doc.text(`Org Timezone: UTC${(env as any).ORG_TZ_OFFSET || '+00:00'}`);
+    doc.text(`Generated: ${fmtDate(ts)}`);
+    doc.fillColor('black');
+    doc.moveDown(0.5);
+
+    // Table header
+    const colX = 40; const colWidths = [160, 60, 60, 60, 70, 60];
+    const headers = ['Employee', 'Present', 'Absent', 'Leave', 'Half-Day', 'Total'];
+    let y = doc.y + 6;
+    doc.fontSize(11).text(headers[0], colX, y, { width: colWidths[0] });
+    for (let i = 1; i < headers.length; i++) {
+      doc.text(headers[i], colX + colWidths.slice(0, i).reduce((a,b)=>a+b,0), y, { width: colWidths[i], align: 'right' });
+    }
+    y = y + 16;
+    doc.moveTo(colX, y).lineTo(colX + colWidths.reduce((a,b)=>a+b,0), y).strokeColor('#999').stroke();
+    doc.strokeColor('black');
+
+    // Rows (with spacing)
+    let totalPresent = 0, totalAbsent = 0, totalLeave = 0, totalHalf = 0, totalDays = 0;
+    const rows = Array.from(map.values()).sort((a,b) => a.name.localeCompare(b.name));
+    const rowHeight = 18;
+    const tableWidth = colWidths.reduce((a,b)=>a+b,0);
+    for (let idx = 0; idx < rows.length; idx++) {
+      const r = rows[idx];
+      y += rowHeight;
+      const name = `${r.name} (${r.code})`;
+      // optional zebra background
+      if (idx % 2 === 1) {
+        doc.save().rect(colX, y - rowHeight + 3, tableWidth, rowHeight - 4).fill('#fafafa').restore();
+      }
+      doc.fontSize(10).fillColor('#000').text(name, colX + 2, y - rowHeight + 6, { width: colWidths[0] - 4 });
+      doc.text(String(r.present), colX + colWidths[0], y - rowHeight + 6, { width: colWidths[1], align: 'right' });
+      doc.text(String(r.absent), colX + colWidths[0] + colWidths[1], y - rowHeight + 6, { width: colWidths[2], align: 'right' });
+      doc.text(String(r.leave), colX + colWidths[0] + colWidths[1] + colWidths[2], y - rowHeight + 6, { width: colWidths[3], align: 'right' });
+      doc.text(String(r.half), colX + colWidths[0] + colWidths[1] + colWidths[2] + colWidths[3], y - rowHeight + 6, { width: colWidths[4], align: 'right' });
+      doc.text(String(r.total), colX + colWidths[0] + colWidths[1] + colWidths[2] + colWidths[3] + colWidths[4], y - rowHeight + 6, { width: colWidths[5], align: 'right' });
+
+      totalPresent += r.present; totalAbsent += r.absent; totalLeave += r.leave; totalHalf += r.half; totalDays += r.total;
+
+      // Row separator
+      doc.moveTo(colX, y + 2).lineTo(colX + tableWidth, y + 2).strokeColor('#eee').stroke();
+
+      if (y > doc.page.height - 80) { doc.addPage(); y = doc.y + 6; }
+    }
+
+    // Totals
+    y += 12;
+    doc.moveTo(colX, y).lineTo(colX + tableWidth, y).strokeColor('#999').stroke();
+    y += 6;
+    doc.fontSize(11).fillColor('#000').text('TOTAL', colX + 2, y, { width: colWidths[0] - 4 });
+    doc.text(String(totalPresent), colX + colWidths[0], y, { width: colWidths[1], align: 'right' });
+    doc.text(String(totalAbsent), colX + colWidths[0] + colWidths[1], y, { width: colWidths[2], align: 'right' });
+    doc.text(String(totalLeave), colX + colWidths[0] + colWidths[1] + colWidths[2], y, { width: colWidths[3], align: 'right' });
+    doc.text(String(totalHalf), colX + colWidths[0] + colWidths[1] + colWidths[2] + colWidths[3], y, { width: colWidths[4], align: 'right' });
+    doc.text(String(totalDays), colX + colWidths[0] + colWidths[1] + colWidths[2] + colWidths[3] + colWidths[4], y, { width: colWidths[5], align: 'right' });
+
+    doc.end();
   } catch (e) { next(e) }
 });
 
