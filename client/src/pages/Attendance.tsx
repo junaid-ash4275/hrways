@@ -279,36 +279,33 @@ export default function Attendance() {
             </div>
             <button
               onClick={async () => {
+                // If an employee is selected in review, this button clears the selection
+                if (reviewSelected) {
+                  setReviewSelected(null);
+                  setReviewQ('');
+                  // Reload today's (or selected dates') exceptions without employee filter
+                  try {
+                    setListLoading(true)
+                    const params: any = { from: dateFrom, to: (dateTo || dateFrom) }
+                    const { data } = await http.get('/attendance', { params })
+                    setList(data?.data || [])
+                  } catch {}
+                  finally { setListLoading(false) }
+                  return
+                }
+
+                // Default behavior: Show list for selected dates
                 if (!dateFrom) return
                 try {
                   setListLoading(true)
                   const params: any = { from: dateFrom, to: (dateTo || dateFrom) }
-                  if (reviewSelected?.id) params.employee_id = reviewSelected.id
                   const { data } = await http.get('/attendance', { params })
                   setList(data?.data || [])
                 } catch {}
                 finally { setListLoading(false) }
               }}
               className="px-2 py-1 rounded border border-gray-300 dark:border-neutral-700"
-            >Show</button>
-            {reviewSelected && (
-              <button
-                onClick={() => {
-                  setReviewSelected(null); setReviewQ('');
-                  // reload today's exceptions
-                  (async () => {
-                    try {
-                      setListLoading(true)
-                      const params: any = { from: dateFrom, to: (dateTo || dateFrom) }
-                      const { data } = await http.get('/attendance', { params })
-                      setList(data?.data || [])
-                    } catch {}
-                    finally { setListLoading(false) }
-                  })()
-                }}
-                className="px-2 py-1 rounded border border-gray-300 dark:border-neutral-700"
-              >Clear</button>
-            )}
+            >{reviewSelected ? 'Clear' : 'Show'}</button>
             <div ref={exportRef} className="relative">
               <button
                 onClick={(e) => { e.stopPropagation(); setExportOpen((v) => !v) }}
