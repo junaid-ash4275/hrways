@@ -81,31 +81,498 @@ routes.get('/dashboard/activity', authGuard('HR'), async (req, res, next) => {
   } catch (e) { next(e) }
 })
 
-// Minimal meetings list by date range for calendar
+// HRW-MEET-3: List & Filter Meetings (date range + attendee) with optional pagination
 routes.get('/meetings', authGuard('HR'), async (req, res, next) => {
   try {
     const fromRaw = (req.query.from || '').toString().trim()
     const toRaw = (req.query.to || '').toString().trim()
     let from = new Date()
     let to = new Date(from.getTime() + 30 * 24 * 3600 * 1000)
-    if (fromRaw) {
-      const d = new Date(fromRaw)
-      if (!isNaN(d.getTime())) from = d
+    if (fromRaw) { const d = new Date(fromRaw); if (!isNaN(d.getTime())) from = d }
+    if (toRaw) { const d = new Date(toRaw); if (!isNaN(d.getTime())) to = d }
+
+    const pageRaw = Number(req.query.page || '')
+    const pageSizeRaw = Number(req.query.pageSize || '')
+    const usePaging = Number.isFinite(pageRaw) && Number.isFinite(pageSizeRaw) && pageRaw > 0 && pageSizeRaw > 0
+    const page = usePaging ? Math.max(1, Math.floor(pageRaw)) : 1
+    const pageSize = usePaging ? Math.max(1, Math.min(200, Math.floor(pageSizeRaw))) : 0
+    const offset = usePaging ? (page - 1) * pageSize : 0
+
+    const sortRaw = (req.query.sort || 'start_at').toString().toLowerCase()
+    const dirRaw = (req.query.dir || 'asc').toString().toLowerCase()
+    const allowedSort: Record<string, string> = { start_at: 'm.start_at', title: 'm.title', created_at: 'm.created_at' }
+    const sortCol = allowedSort[sortRaw] || 'm.start_at'
+    const dir = dirRaw === 'desc' ? 'DESC' : 'ASC'
+
+    const attendeeRaw = (req.query.attendee || '').toString().trim()
+    const statusRaw = (req.query.status || '').toString().trim().toUpperCase()
+    const uuidRe = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/
+
+    const where: string[] = []
+    const params: any[] = []
+    let pi = 1
+
+    // Date range
+    where.push(`m.start_at >= $${pi++}`); params.push(from.toISOString())
+    where.push(`m.start_at < $${pi++}`); params.push(to.toISOString())
+
+    // Status filter (optional)
+    if (statusRaw) {
+      if (["SCHEDULED","DONE","CANCELLED"].includes(statusRaw)) {
+        where.push(`m.status = $${pi++}`); params.push(statusRaw)
+      } else if (statusRaw === 'NOT_CANCELLED') {
+        where.push(`m.status <> 'CANCELLED'`)
+      }
     }
-    if (toRaw) {
-      const d = new Date(toRaw)
-      if (!isNaN(d.getTime())) to = d
+
+    // Attendee filter (optional): uuid filters users or employees; non-uuid filters external email
+    let joinAtt = ''
+    if (attendeeRaw) {
+      joinAtt = 'JOIN meeting_attendees a ON a.meeting_id = m.id'
+      if (uuidRe.test(attendeeRaw)) {
+        where.push(`(a.attendee_user_id = $${pi} OR a.attendee_employee_id = $${pi})`); params.push(attendeeRaw)
+        pi++
+      } else {
+        // Allow matching by external email OR external name (case-insensitive)
+        where.push(`(LOWER(a.external_email) = LOWER($${pi}) OR LOWER(a.external_name) = LOWER($${pi}))`); params.push(attendeeRaw)
+        pi++
+      }
     }
-    const { rows } = await pool.query(
-      `SELECT id, title, start_at, end_at, status
-         FROM meetings
-        WHERE start_at >= $1 AND start_at < $2 AND status <> 'CANCELLED'
-        ORDER BY start_at ASC`,
-      [from.toISOString(), to.toISOString()]
-    )
-    res.json({ data: rows })
+
+    const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''
+
+    // Count total distinct meetings
+    const countSql = `SELECT COUNT(*)::int AS c FROM (SELECT m.id FROM meetings m ${joinAtt} ${whereSql} GROUP BY m.id) t`
+    const total = (await pool.query(countSql, params)).rows[0]?.c || 0
+
+    // List meetings
+    const listSql = `SELECT m.id, m.title, m.start_at, m.end_at, m.status
+                       FROM meetings m
+                       ${joinAtt}
+                       ${whereSql}
+                       GROUP BY m.id
+                       ORDER BY ${sortCol} ${dir}
+                       ${usePaging ? `LIMIT $${pi} OFFSET $${pi + 1}` : ''}`
+    const listParams = usePaging ? [...params, pageSize, offset] : params
+    const rows = (await pool.query(listSql, listParams)).rows
+
+    if (usePaging) {
+      return res.json({ data: rows, page, pageSize, total })
+    } else {
+      return res.json({ data: rows, page: 1, pageSize: rows.length, total: rows.length })
+    }
   } catch (e) { next(e) }
 })
+
+// Get meeting details with attendees
+routes.get('/meetings/:id', authGuard('HR'), async (req, res, next) => {
+  try {
+    const id = (req.params.id || '').toString().trim();
+    const uuidRe = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/;
+    if (!uuidRe.test(id)) {
+      return res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'Invalid meeting id format' } });
+    }
+    const mt = await pool.query('SELECT id, title, start_at, end_at, status FROM meetings WHERE id = $1', [id]);
+    if (mt.rowCount === 0) return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Meeting not found' } });
+    const meeting = mt.rows[0];
+    const rows = await pool.query(
+      `SELECT a.attendee_user_id, a.attendee_employee_id, a.external_name, a.external_email, a.external_phone,
+              u.email AS user_email, (u.profile ->> 'fullName') AS user_full_name,
+              e.name AS employee_name, e.email AS employee_email
+         FROM meeting_attendees a
+         LEFT JOIN users u ON u.id = a.attendee_user_id
+         LEFT JOIN employees e ON e.id = a.attendee_employee_id
+        WHERE a.meeting_id = $1`, [id]);
+    const users: any[] = [];
+    const employees: any[] = [];
+    const externals: any[] = [];
+    for (const r of rows.rows) {
+      if (r.attendee_user_id) {
+        users.push({ id: r.attendee_user_id, email: r.user_email, fullName: r.user_full_name });
+      } else if (r.attendee_employee_id) {
+        employees.push({ id: r.attendee_employee_id, name: r.employee_name, email: r.employee_email });
+      } else if (r.external_email || r.external_name || r.external_phone) {
+        externals.push({ name: r.external_name, email: r.external_email, phone: r.external_phone });
+      }
+    }
+    res.json({ ...meeting, attendees: { users, employees, externals } });
+  } catch (e) { next(e) }
+});
+
+// HRW-MEET-1: Create Meeting with Attendees (employees, users, externals)
+routes.post('/meetings', authGuard('HR'), async (req, res, next) => {
+  const client = await pool.connect();
+  try {
+    const body = req.body || {};
+    const title = (body.title || '').toString().trim();
+    const startRaw = (body.start_at || body.startAt || '').toString().trim();
+    const endRaw = (body.end_at || body.endAt || '').toString().trim();
+    const currentUserId = (req as any).user?.id as string | undefined;
+
+    // Attendees can be provided as an array of unions or grouped
+    const attendees = Array.isArray(body.attendees) ? body.attendees : [];
+    const usersArr: string[] = Array.isArray(body.user_ids) ? body.user_ids : [];
+    const employeesArr: string[] = Array.isArray(body.employee_ids) ? body.employee_ids : [];
+    const externalsArr: any[] = Array.isArray(body.external_contacts) ? body.external_contacts : [];
+
+    const errors: string[] = [];
+    if (!title) errors.push('title is required');
+
+    const start = new Date(startRaw);
+    const end = new Date(endRaw);
+    if (isNaN(start.getTime())) errors.push('start_at must be a valid ISO datetime');
+    if (isNaN(end.getTime())) errors.push('end_at must be a valid ISO datetime');
+    if (!isNaN(start.getTime()) && !isNaN(end.getTime()) && !(start.getTime() < end.getTime())) {
+      errors.push('start_at must be earlier than end_at');
+    }
+
+    // Normalize attendees into three sets
+    const uuidRe = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/;
+    const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+    const userIds = new Set<string>();
+    const employeeIds = new Set<string>();
+    const externals: { name?: string; email: string; phone?: string }[] = [];
+
+    function addUserId(v: any) {
+      const s = (v || '').toString().trim();
+      if (!s) return; if (!uuidRe.test(s)) { errors.push(`user_id invalid: ${s}`); return; }
+      userIds.add(s);
+    }
+    function addEmployeeId(v: any) {
+      const s = (v || '').toString().trim();
+      if (!s) return; if (!uuidRe.test(s)) { errors.push(`employee_id invalid: ${s}`); return; }
+      employeeIds.add(s);
+    }
+    function addExternal(obj: any) {
+      if (!obj) return;
+      const name = (obj.name || obj.external_name || '').toString().trim();
+      const emailRaw = (obj.email || obj.external_email || '').toString().trim();
+      const phone = (obj.phone || obj.external_phone || '').toString().trim();
+      // Allow external contact with name-only; email optional
+      const hasAny = !!name || !!emailRaw || !!phone;
+      if (!hasAny) { errors.push('external_contact requires at least a name'); return; }
+      let email: string | undefined = undefined;
+      if (emailRaw) {
+        const normalized = emailRaw.toLowerCase();
+        if (!emailRe.test(normalized)) { errors.push(`external_contact.email invalid: ${emailRaw}`); return; }
+        email = normalized;
+        // dedupe by normalized email if present
+        if (externals.some(e => (e.email || '').toLowerCase() === email)) return;
+      }
+      externals.push({ name: name || undefined, email, phone: phone || undefined });
+    }
+
+    for (const a of attendees) {
+      if (a && typeof a === 'object') {
+        if (a.user_id || a.userId) addUserId(a.user_id || a.userId);
+        else if (a.employee_id || a.employeeId) addEmployeeId(a.employee_id || a.employeeId);
+        else if (a.external || a.external_email || a.email) addExternal(a.external || a);
+        else errors.push('attendee item must contain user_id, employee_id, or external');
+      }
+    }
+    for (const u of usersArr) addUserId(u);
+    for (const e of employeesArr) addEmployeeId(e);
+    for (const ex of externalsArr) addExternal(ex);
+
+    if (userIds.size + employeeIds.size + externals.length < 1) {
+      errors.push('at least one attendee is required');
+    }
+
+    if (errors.length) {
+      return res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'Invalid meeting data', details: errors } });
+    }
+
+    // Validate foreign refs exist
+    // Wrap in transaction
+    await client.query('BEGIN');
+
+    if (userIds.size) {
+      const ids = Array.from(userIds);
+      const q = await client.query('SELECT id FROM users WHERE id = ANY($1::uuid[])', [ids]);
+      const found = new Set(q.rows.map(r => r.id));
+      const missing = ids.filter(id => !found.has(id));
+      if (missing.length) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'Unknown user_ids', details: missing } });
+      }
+    }
+    if (employeeIds.size) {
+      const ids = Array.from(employeeIds);
+      const q = await client.query('SELECT id FROM employees WHERE id = ANY($1::uuid[])', [ids]);
+      const found = new Set(q.rows.map(r => r.id));
+      const missing = ids.filter(id => !found.has(id));
+      if (missing.length) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'Unknown employee_ids', details: missing } });
+      }
+    }
+
+    // Determine available organizer/created_by columns
+    const cols = await client.query(`SELECT column_name FROM information_schema.columns WHERE table_schema='public' AND table_name='meetings'`);
+    const hasCreatedBy = cols.rows.some((r: any) => r.column_name === 'created_by');
+    const hasOrganizer = cols.rows.some((r: any) => r.column_name === 'organizer_user_id');
+
+    // Insert meeting
+    const fields: string[] = ['title', 'start_at', 'end_at', 'status'];
+    const values: any[] = [title, start.toISOString(), end.toISOString(), 'SCHEDULED'];
+    if (hasCreatedBy && currentUserId) { fields.push('created_by'); values.push(currentUserId); }
+    if (hasOrganizer && currentUserId) { fields.push('organizer_user_id'); values.push(currentUserId); }
+    const placeholders = fields.map((_, i) => `$${i + 1}`).join(',');
+    const ins = await client.query(
+      `INSERT INTO meetings(${fields.join(',')}) VALUES (${placeholders}) RETURNING id, title, start_at, end_at, status`,
+      values
+    );
+    const meeting = ins.rows[0];
+
+    // Insert attendees, avoid duplicates (DB constraints will enforce, use DO NOTHING)
+    const meetingId = meeting.id;
+    for (const id of userIds) {
+      await client.query(
+        `INSERT INTO meeting_attendees(meeting_id, attendee_user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+        [meetingId, id]
+      );
+    }
+    for (const id of employeeIds) {
+      await client.query(
+        `INSERT INTO meeting_attendees(meeting_id, attendee_employee_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+        [meetingId, id]
+      );
+    }
+    for (const ex of externals) {
+      await client.query(
+        `INSERT INTO meeting_attendees(meeting_id, external_name, external_email, external_phone)
+         VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING`,
+        [meetingId, ex.name || null, ex.email, ex.phone || null]
+      );
+    }
+
+    await client.query('COMMIT');
+    return res.status(201).json({
+      id: meeting.id,
+      title: meeting.title,
+      start_at: meeting.start_at,
+      end_at: meeting.end_at,
+      status: meeting.status,
+    });
+  } catch (e) {
+    try { await client.query('ROLLBACK'); } catch {}
+    next(e);
+  } finally {
+    client.release();
+  }
+});
+
+// HRW-MEET-2: Update Meeting (title/time and optionally replace attendees)
+routes.put('/meetings/:id', authGuard('HR'), async (req, res, next) => {
+  const client = await pool.connect();
+  try {
+    const id = (req.params.id || '').toString().trim();
+    const uuidRe = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/;
+    if (!uuidRe.test(id)) {
+      return res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'Invalid meeting id format' } });
+    }
+
+    const body = req.body || {};
+    const titleRaw = body.title;
+    const startRaw = (body.start_at || body.startAt);
+    const endRaw = (body.end_at || body.endAt);
+
+    const errors: string[] = [];
+    let title: string | undefined = undefined;
+    let start: Date | undefined = undefined;
+    let end: Date | undefined = undefined;
+    if (titleRaw !== undefined) {
+      title = (titleRaw || '').toString().trim();
+      if (!title) errors.push('title cannot be empty');
+    }
+    if (startRaw !== undefined) {
+      start = new Date((startRaw || '').toString().trim());
+      if (isNaN(start.getTime())) errors.push('start_at must be a valid ISO datetime');
+    }
+    if (endRaw !== undefined) {
+      end = new Date((endRaw || '').toString().trim());
+      if (isNaN(end.getTime())) errors.push('end_at must be a valid ISO datetime');
+    }
+    if (start && end && !(start.getTime() < end.getTime())) {
+      errors.push('start_at must be earlier than end_at');
+    }
+
+    // Detect attendee replacement intent
+    const hasAttendeePayload = Array.isArray(body.attendees) || Array.isArray(body.user_ids) || Array.isArray(body.employee_ids) || Array.isArray(body.external_contacts);
+
+    const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const userIds = new Set<string>();
+    const employeeIds = new Set<string>();
+    const externals: { name?: string; email?: string; phone?: string }[] = [];
+    function addUserId(v: any) {
+      const s = (v || '').toString().trim();
+      if (!s) return; if (!uuidRe.test(s)) { errors.push(`user_id invalid: ${s}`); return; }
+      userIds.add(s);
+    }
+    function addEmployeeId(v: any) {
+      const s = (v || '').toString().trim();
+      if (!s) return; if (!uuidRe.test(s)) { errors.push(`employee_id invalid: ${s}`); return; }
+      employeeIds.add(s);
+    }
+    function addExternal(obj: any) {
+      if (!obj) return;
+      const name = (obj.name || obj.external_name || '').toString().trim();
+      const emailRaw = (obj.email || obj.external_email || '').toString().trim();
+      const phone = (obj.phone || obj.external_phone || '').toString().trim();
+      const hasAny = !!name || !!emailRaw || !!phone;
+      if (!hasAny) { errors.push('external_contact requires at least a name'); return; }
+      let email: string | undefined = undefined;
+      if (emailRaw) {
+        const normalized = emailRaw.toLowerCase();
+        if (!emailRe.test(normalized)) { errors.push(`external_contact.email invalid: ${emailRaw}`); return; }
+        email = normalized;
+        if (externals.some(e => (e.email || '').toLowerCase() === email)) return;
+      }
+      externals.push({ name: name || undefined, email, phone: phone || undefined });
+    }
+    if (Array.isArray(body.attendees)) {
+      for (const a of body.attendees) {
+        if (a && typeof a === 'object') {
+          if (a.user_id || a.userId) addUserId(a.user_id || a.userId);
+          else if (a.employee_id || a.employeeId) addEmployeeId(a.employee_id || a.employeeId);
+          else if (a.external || a.external_email || a.email) addExternal(a.external || a);
+          else errors.push('attendee item must contain user_id, employee_id, or external');
+        }
+      }
+    }
+    if (Array.isArray(body.user_ids)) for (const u of body.user_ids) addUserId(u);
+    if (Array.isArray(body.employee_ids)) for (const e of body.employee_ids) addEmployeeId(e);
+    if (Array.isArray(body.external_contacts)) for (const ex of body.external_contacts) addExternal(ex);
+
+    if (errors.length) {
+      return res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'Invalid meeting data', details: errors } });
+    }
+
+    await client.query('BEGIN');
+    // Ensure meeting exists
+    const existing = await client.query('SELECT id, title, start_at, end_at, status FROM meetings WHERE id = $1', [id]);
+    if (existing.rowCount === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Meeting not found' } });
+    }
+
+    // If replacing attendees, ensure at least one attendee provided
+    if (hasAttendeePayload) {
+      if (userIds.size + employeeIds.size + externals.length < 1) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'Invalid meeting data', details: ['at least one attendee is required'] } });
+      }
+    }
+
+    // Validate foreign refs
+    if (userIds.size) {
+      const ids = Array.from(userIds);
+      const q = await client.query('SELECT id FROM users WHERE id = ANY($1::uuid[])', [ids]);
+      const found = new Set(q.rows.map(r => r.id));
+      const missing = ids.filter(id => !found.has(id));
+      if (missing.length) { await client.query('ROLLBACK'); return res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'Unknown user_ids', details: missing } }); }
+    }
+    if (employeeIds.size) {
+      const ids = Array.from(employeeIds);
+      const q = await client.query('SELECT id FROM employees WHERE id = ANY($1::uuid[])', [ids]);
+      const found = new Set(q.rows.map(r => r.id));
+      const missing = ids.filter(id => !found.has(id));
+      if (missing.length) { await client.query('ROLLBACK'); return res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'Unknown employee_ids', details: missing } }); }
+    }
+
+    // Update meeting fields if provided
+    if (title !== undefined || start !== undefined || end !== undefined) {
+      const sets: string[] = [];
+      const params: any[] = [];
+      let pi = 1;
+      if (title !== undefined) { sets.push(`title = $${pi++}`); params.push(title); }
+      if (start !== undefined) { sets.push(`start_at = $${pi++}`); params.push(start!.toISOString()); }
+      if (end !== undefined) { sets.push(`end_at = $${pi++}`); params.push(end!.toISOString()); }
+      if (sets.length) {
+        params.push(id);
+        await client.query(`UPDATE meetings SET ${sets.join(', ')} WHERE id = $${pi}`, params);
+      }
+    }
+
+    // Replace attendees if payload present
+    if (hasAttendeePayload) {
+      await client.query('DELETE FROM meeting_attendees WHERE meeting_id = $1', [id]);
+      for (const uid of userIds) {
+        await client.query(`INSERT INTO meeting_attendees(meeting_id, attendee_user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`, [id, uid]);
+      }
+      for (const eid of employeeIds) {
+        await client.query(`INSERT INTO meeting_attendees(meeting_id, attendee_employee_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`, [id, eid]);
+      }
+      for (const ex of externals) {
+        await client.query(`INSERT INTO meeting_attendees(meeting_id, external_name, external_email, external_phone) VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING`, [id, ex.name || null, ex.email || null, ex.phone || null]);
+      }
+    }
+
+    // Notify internal user attendees of update (MVP+: safe to include; no-op if none)
+    try {
+      const att = await client.query(`SELECT attendee_user_id FROM meeting_attendees WHERE meeting_id = $1 AND attendee_user_id IS NOT NULL`, [id]);
+      const mt = await client.query('SELECT title, start_at FROM meetings WHERE id = $1', [id]);
+      const titleNow = mt.rows[0]?.title as string;
+      const startAt = mt.rows[0]?.start_at;
+      for (const row of att.rows) {
+        await client.query(
+          `INSERT INTO notifications(user_id, type, message, metadata)
+             VALUES ($1, 'MEETING_UPDATED', $2, $3::jsonb)`,
+          [row.attendee_user_id, `Meeting updated: ${titleNow}`, JSON.stringify({ meeting_id: id, title: titleNow, start_at: startAt })]
+        );
+      }
+    } catch {}
+
+    await client.query('COMMIT');
+    const out = await pool.query('SELECT id, title, start_at, end_at, status FROM meetings WHERE id = $1', [id]);
+    return res.json(out.rows[0]);
+  } catch (e) {
+    try { await client.query('ROLLBACK'); } catch {}
+    next(e);
+  } finally {
+    client.release();
+  }
+});
+
+// HRW-MEET-2 (cancel subset): Cancel a meeting -> set status = 'CANCELLED'
+routes.delete('/meetings/:id', authGuard('HR'), async (req, res, next) => {
+  try {
+    const id = (req.params.id || '').toString().trim();
+    const uuidRe = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/;
+    if (!uuidRe.test(id)) {
+      return res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'Invalid meeting id format' } });
+    }
+    const upd = await pool.query(
+      `UPDATE meetings SET status = 'CANCELLED' WHERE id = $1 AND status <> 'CANCELLED' RETURNING id, title, start_at, end_at, status`,
+      [id]
+    );
+    if (upd.rowCount === 0) {
+      // Check if meeting exists
+      const exists = await pool.query('SELECT 1 FROM meetings WHERE id = $1', [id]);
+      if (exists.rowCount === 0) {
+        return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Meeting not found' } });
+      }
+      // Already cancelled, respond idempotently
+      return res.status(200).json({ ok: true, id, status: 'CANCELLED' });
+    }
+    // Insert notifications for internal attendees (users only)
+    try {
+      const att = await pool.query(`SELECT attendee_user_id FROM meeting_attendees WHERE meeting_id = $1 AND attendee_user_id IS NOT NULL`, [id]);
+      const title = upd.rows[0].title as string;
+      const startAt = upd.rows[0].start_at as any;
+      for (const row of att.rows) {
+        const uid = row.attendee_user_id;
+        await pool.query(
+          `INSERT INTO notifications(user_id, type, message, metadata)
+             VALUES ($1, 'MEETING_CANCELLED', $2, $3::jsonb)`,
+          [uid, `Meeting cancelled: ${title}`, JSON.stringify({ meeting_id: id, title, start_at: startAt })]
+        );
+      }
+    } catch {}
+    res.json(upd.rows[0]);
+  } catch (e) { next(e) }
+});
 
 // HRW-ATT-1: Record Attendance
 routes.post('/attendance', authGuard('HR'), async (req, res, next) => {
