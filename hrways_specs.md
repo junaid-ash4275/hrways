@@ -186,7 +186,8 @@ Modules:
 **vNext**: Google/Outlook sync, recurring meetings, room resources.
 
 ### Model (Conceptual)
-- **Meeting**: title, start_at, end_at, location, organizer (HR/Admin), attendees (users and/or employee records).
+- **Meeting**: title, start_at, end_at, location, organizer (HR/Admin), attendees (employees, internal users, and/or external contacts).
+  - External contact capture: { name (required), email (optional), phone (optional) }; no user account required.
 
 ### Action (Intents)
 - Create/update/cancel meetings.
@@ -195,7 +196,7 @@ Modules:
 
 ### Data (Conceptual)
 - Entities: `Meeting`, `MeetingAttendee`.
-- Relationship: many-to-many between meeting and humans (user or employee record).
+- Relationship: many-to-many between meeting and humans (user, employee record, or external contact). Uniqueness: prevent duplicates per meeting by (user id), (employee id), and by normalized external email when provided.
 
 ---
 
@@ -388,4 +389,3 @@ server/src/
 ---
 
 **End of specs • HRWays • BMAD MVP v1.1**
-

@@ -16,9 +16,9 @@ import {
 } from '@heroicons/react/24/outline'
 import logoUrl from '../assets/hrways-logo.svg'
 
-type NavItem = { to: string; label: string; Icon: (props: React.SVGProps<SVGSVGElement>) => JSX.Element; adminOnly?: boolean }
-type NavGroup = { label: string; Icon: (props: React.SVGProps<SVGSVGElement>) => JSX.Element; children: NavItem[]; adminOnly?: boolean }
-const navBase: Array<NavItem | NavGroup> = [
+export type NavItem = { to: string; label: string; Icon: (props: React.SVGProps<SVGSVGElement>) => JSX.Element; adminOnly?: boolean }
+export type NavGroup = { label: string; Icon: (props: React.SVGProps<SVGSVGElement>) => JSX.Element; children: NavItem[]; adminOnly?: boolean }
+export const navBase: Array<NavItem | NavGroup> = [
   { to: '/', label: 'Dashboard', Icon: HomeIcon },
   { to: '/employees', label: 'Employees', Icon: UsersIcon },
   { to: '/attendance', label: 'Attendance', Icon: ClipboardDocumentListIcon },
@@ -65,8 +65,14 @@ export default function Sidebar() {
     <aside
       onMouseEnter={handleEnter}
       onMouseLeave={handleLeave}
-      className={(expanded ? 'w-64' : 'w-16') +
-        " transition-all duration-300 ease-in-out border-r border-gray-200 dark:border-neutral-800 p-4 bg-white/60 dark:bg-neutral-900/60 backdrop-blur"}
+      className={
+        // Mobile: slide-in drawer; Desktop: sticky sidebar that doesn't scroll with page
+        `hidden md:block fixed md:relative inset-y-0 left-0 z-40 transform md:transform-none ` +
+        `${sidebarCollapsed ? '-translate-x-full' : 'translate-x-0'} md:translate-x-0 ` +
+        `${expanded ? 'md:w-64' : 'md:w-16'} w-64 ` +
+        `md:sticky md:top-0 md:h-screen overflow-y-auto ` +
+        `transition-all duration-300 ease-in-out border-r border-gray-200 dark:border-neutral-800 p-4 bg-white/60 dark:bg-neutral-900/60 backdrop-blur`
+      }
     >
       <div className={(expanded ? '' : 'justify-center') + " flex items-center gap-3 mb-6"}>
         <img src={logoUrl} alt="HRWays" className="h-9 w-9" />

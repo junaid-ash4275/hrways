@@ -76,8 +76,8 @@ export default function Dashboard() {
     ;(async () => {
       try {
         setMtgLoading(true)
-        const { data } = await http.get('/meetings', { params: { from: from.toISOString(), to: to.toISOString() } })
-        if (alive) setMeetings(data?.data || [])
+        const { data } = await http.get('/meetings', { params: { from: from.toISOString(), to: to.toISOString(), status: 'NOT_CANCELLED' } })
+        if (alive) setMeetings(Array.isArray(data?.data) ? data.data : [])
       } catch (e: any) {
         if (alive) setMtgError(e?.response?.data?.error?.message || 'Failed to load meetings')
       } finally { if (alive) setMtgLoading(false) }

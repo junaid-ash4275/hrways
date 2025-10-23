@@ -3,18 +3,23 @@ import { useAuth } from '../auth/AuthContext'
 import { http } from '../api/http'
 import { useNavigate } from 'react-router-dom'
 import { useUI } from '../ui/UIContext'
+import { navBase } from './Sidebar'
+import { NavLink } from 'react-router-dom'
+import { useI18n } from '../i18n/i18n'
 import { Bars3Icon, BellIcon, SunIcon, MoonIcon, ArrowRightOnRectangleIcon } from '@heroicons/react/24/outline'
 
 export default function Topbar() {
   const { user, logout } = useAuth()
   const { toggleSidebar } = useUI()
   const nav = useNavigate()
+  const { t } = useI18n()
   const [isDark, setIsDark] = React.useState<boolean>(() =>
     typeof document !== 'undefined' ? document.documentElement.classList.contains('dark') : false
   )
   const [now, setNow] = React.useState<Date>(new Date())
   const [locale, setLocale] = React.useState<string>(() => localStorage.getItem('lang') || 'en-US')
   const [tz, setTz] = React.useState<string | undefined>(() => localStorage.getItem('timezone') || undefined as any)
+  const [mobileOpen, setMobileOpen] = React.useState(false)
 
   React.useEffect(() => {
     const id = window.setInterval(() => setNow(new Date()), 30000)
@@ -40,9 +45,9 @@ export default function Topbar() {
   }, [now, locale, tz])
 
   return (
-    <header className="h-14 border-b border-gray-200 dark:border-neutral-800 flex items-center justify-between px-4 bg-white/60 dark:bg-neutral-900/60 backdrop-blur">
+    <header className="relative z-50 h-14 border-b border-gray-200 dark:border-neutral-800 flex items-center justify-between px-4 bg-white md:bg-white/60 dark:bg-neutral-900 md:dark:bg-neutral-900/60 backdrop-blur">
       <div className="flex items-center gap-3 min-w-0">
-        <button onClick={toggleSidebar} className="p-2 rounded-lg border border-gray-300 dark:border-neutral-700 hover:bg-gray-100 dark:hover:bg-neutral-800 focus:outline-none focus:ring-2 focus:ring-emerald-500" aria-label="Toggle sidebar" title="Toggle sidebar">
+        <button onClick={() => { setMobileOpen((v) => !v); toggleSidebar() }} className="p-2 rounded-lg border border-gray-300 dark:border-neutral-700 hover:bg-gray-100 dark:hover:bg-neutral-800 focus:outline-none focus:ring-2 focus:ring-emerald-500" aria-label="Toggle menu" title="Toggle menu">
           <Bars3Icon className="h-5 w-5" />
         </button>
         <div className="text-sm opacity-80 truncate">
@@ -89,7 +94,56 @@ export default function Topbar() {
           </button>
         )}
       </div>
+      {/* Mobile dropdown menu */}
+      {mobileOpen && (
+        <>
+          <div className="md:hidden fixed inset-0 z-30 bg-black/40" onClick={() => setMobileOpen(false)} />
+          <nav className="md:hidden fixed top-14 left-0 right-0 z-40 bg-white dark:bg-neutral-900 border-b border-gray-200 dark:border-neutral-800 shadow">
+            <ul className="p-2 space-y-1">
+              {navBase
+                .filter((n: any) => !(n as any).adminOnly || user?.role === 'ADMIN')
+                .map((n: any, idx: number) => {
+                  const isGroup = !!n.children
+                  if (!isGroup) {
+                    const item = n as any
+                    return (
+                      <li key={item.to ?? idx}>
+                        <NavLink to={item.to} end={item.to === '/'} onClick={() => setMobileOpen(false)}>
+                          {({ isActive }) => (
+                            <div className={`flex items-center gap-3 px-3 py-2 rounded-md ${isActive ? 'bg-emerald-50 dark:bg-emerald-900/20' : 'hover:bg-emerald-50 dark:hover:bg-emerald-900/20'}`}>
+                              <item.Icon className="h-5 w-5 opacity-80" />
+                              <span className="truncate">{t(item.label)}</span>
+                            </div>
+                          )}
+                        </NavLink>
+                      </li>
+                    )
+                  }
+                  const group = n as any
+                  return (
+                    <li key={`mgroup-${idx}`} className="px-2">
+                      <div className="text-xs uppercase opacity-70 px-1 py-1">{t(group.label)}</div>
+                      <ul className="pl-2">
+                        {group.children.map((child: any) => (
+                          <li key={child.to}>
+                            <NavLink to={child.to} onClick={() => setMobileOpen(false)}>
+                              {({ isActive }) => (
+                                <div className={`flex items-center gap-3 px-3 py-2 rounded-md ${isActive ? 'bg-emerald-50 dark:bg-emerald-900/20' : 'hover:bg-emerald-50 dark:hover:bg-emerald-900/20'}`}>
+                                  <child.Icon className="h-4 w-4 opacity-80" />
+                                  <span className="truncate text-sm">{t(child.label)}</span>
+                                </div>
+                              )}
+                            </NavLink>
+                          </li>
+                        ))}
+                      </ul>
+                    </li>
+                  )
+                })}
+            </ul>
+          </nav>
+        </>
+      )}
     </header>
   )
 }
-

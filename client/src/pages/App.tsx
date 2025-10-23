@@ -60,11 +60,11 @@ export default function App() {
   return (
     <UIProvider>
       <I18nProvider>
-        <div className="min-h-screen flex bg-gray-100 dark:bg-neutral-900 text-gray-900 dark:text-gray-100">
+        <div className="h-screen flex bg-gray-100 dark:bg-neutral-900 text-gray-900 dark:text-gray-100 overflow-hidden">
           <Sidebar />
-          <div className="flex-1 flex flex-col">
+          <div className="flex-1 flex flex-col max-h-screen">
             <Topbar />
-            <main className="p-4">
+            <main className="p-4 overflow-y-auto flex-1">
               <Outlet />
             </main>
           </div>
