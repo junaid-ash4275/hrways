@@ -8,7 +8,7 @@ import Employees from './pages/Employees'
 import Attendance from './pages/Attendance'
 import Meetings from './pages/Meetings'
 import Payroll from './pages/Payroll'
-import Settings from './pages/Settings'
+\nimport Celebrations from './pages/Celebrations'
 import SettingsProfile from './pages/settings/Profile'
 import SettingsPassword from './pages/settings/Password'
 import SettingsPreferences from './pages/settings/Preferences'
@@ -34,7 +34,7 @@ const router = createBrowserRouter([
       { index: true, element: <Dashboard /> },
       { path: 'employees', element: <Employees /> },
       { path: 'attendance', element: <Attendance /> },
-      { path: 'meetings', element: <Meetings /> },
+      \n      { path: 'celebrations', element: <Celebrations /> },
       { path: 'payroll', element: <Payroll /> },
       {
         path: 'settings',
@@ -67,3 +67,4 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
     </AuthProvider>
   </React.StrictMode>
 )
+

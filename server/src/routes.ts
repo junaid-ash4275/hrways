@@ -16,9 +16,9 @@ routes.get('/healthz', async (_req, res) => {
   res.json({ ok: true, db });
 });
 
-// HRW-DASH-1: KPI Cards
-routes.get('/dashboard/kpis', authGuard('HR'), async (_req, res, next) => {
-  try {
+  // HRW-DASH-1: KPI Cards
+  routes.get('/dashboard/kpis', authGuard('HR'), async (_req, res, next) => {
+    try {
     const weekStart = new Date();
     // Compute Monday 00:00 of current week in server time
     const day = weekStart.getDay(); // 0=Sun .. 6=Sat
@@ -35,8 +35,17 @@ routes.get('/dashboard/kpis', authGuard('HR'), async (_req, res, next) => {
           AND date_from <= CURRENT_DATE
           AND date_to >= CURRENT_DATE`
     );
-    const qLeavePending = pool.query(
-      `SELECT COUNT(*)::int AS c FROM leave_requests WHERE status = 'PENDING'`
+    // Birthdays and anniversaries this month
+    const qBirthdays = pool.query(
+      `SELECT COUNT(*)::int AS c
+         FROM employees
+        WHERE EXTRACT(MONTH FROM birth_date) = EXTRACT(MONTH FROM CURRENT_DATE)`
+    );
+    const qAnniv = pool.query(
+      `SELECT COUNT(*)::int AS c
+         FROM employees
+        WHERE EXTRACT(MONTH FROM join_date) = EXTRACT(MONTH FROM CURRENT_DATE)
+          AND AGE(CURRENT_DATE, join_date) >= INTERVAL '1 year'`
     );
     const qMeetingsWeek = pool.query(
       `SELECT COUNT(*)::int AS c
@@ -45,21 +54,21 @@ routes.get('/dashboard/kpis', authGuard('HR'), async (_req, res, next) => {
       [weekStart.toISOString(), weekEnd.toISOString()]
     );
 
-    const [employees, leaveToday, leavePending, meetings] = await Promise.all([
-      qEmployees, qLeaveToday, qLeavePending, qMeetingsWeek
+    const [employees, leaveToday, birthdays, anniv, meetings] = await Promise.all([
+      qEmployees, qLeaveToday, qBirthdays, qAnniv, qMeetingsWeek
     ]);
 
     res.json({
       employeesTotal: employees.rows?.[0]?.c || 0,
       onLeaveToday: leaveToday.rows?.[0]?.c || 0,
-      leavePending: leavePending.rows?.[0]?.c || 0,
+      birthdaysThisMonth: (birthdays.rows?.[0]?.c || 0) + (anniv.rows?.[0]?.c || 0),
       meetingsThisWeek: meetings.rows?.[0]?.c || 0,
     });
   } catch (e) { next(e) }
 });
 
-// HRW-DASH-2: Recent Activity (aggregated)
-routes.get('/dashboard/activity', authGuard('HR'), async (req, res, next) => {
+  // HRW-DASH-2: Recent Activity (aggregated)
+  routes.get('/dashboard/activity', authGuard('HR'), async (req, res, next) => {
   try {
     const limitRaw = Number(req.query.limit || 10) || 10
     const limit = Math.max(1, Math.min(100, limitRaw))
@@ -69,7 +78,7 @@ routes.get('/dashboard/activity', authGuard('HR'), async (req, res, next) => {
          UNION ALL
          SELECT created_at AS at, 'LEAVE' AS kind, id::text AS ref, NULL::text AS title, '/attendance' AS link FROM leave_requests
          UNION ALL
-         SELECT created_at AS at, 'MEETING' AS kind, id::text AS ref, title AS title, '/meetings' AS link FROM meetings
+         SELECT created_at AS at, 'MEETING' AS kind, id::text AS ref, title AS title, ('/meetings?open=' || id::text) AS link FROM meetings
          UNION ALL
          SELECT created_at AS at, 'DOCUMENT' AS kind, id::text AS ref, filename AS title, '/employees' AS link FROM employee_documents
        ) t
@@ -1829,7 +1838,31 @@ routes.put('/me/profile', authGuard(), async (req, res, next) => {
   }
 });
 
-routes.get('/admin/ping', authGuard('ADMIN'), (_req, res) => {
+
+// HRW-DASH-3: Birthdays & Work Anniversaries (this month)
+routes.get('/dashboard/celebrations', authGuard('HR'), async (_req, res, next) => {
+  try {
+    const birthdays = await pool.query(
+      `SELECT id, name, email, birth_date,
+              EXTRACT(DAY FROM birth_date)::int AS day
+         FROM employees
+        WHERE birth_date IS NOT NULL
+          AND EXTRACT(MONTH FROM birth_date) = EXTRACT(MONTH FROM CURRENT_DATE)
+        ORDER BY day ASC, name ASC`
+    );
+    const anniversaries = await pool.query(
+      `SELECT id, name, email, join_date,
+              EXTRACT(DAY FROM join_date)::int AS day,
+              EXTRACT(YEAR FROM AGE(CURRENT_DATE, join_date))::int AS years
+         FROM employees
+        WHERE join_date IS NOT NULL
+          AND EXTRACT(MONTH FROM join_date) = EXTRACT(MONTH FROM CURRENT_DATE)
+          AND AGE(CURRENT_DATE, join_date) >= INTERVAL '1 year'
+        ORDER BY day ASC, name ASC`
+    );
+    res.json({ birthdays: birthdays.rows, anniversaries: anniversaries.rows });
+  } catch (e) { next(e) }
+});routes.get('/admin/ping', authGuard('ADMIN'), (_req, res) => {
   res.json({ ok: true, scope: 'ADMIN' });
 });
 
@@ -1860,4 +1893,5 @@ routes.post('/me/change-password', authGuard(), async (req, res, next) => {
     next(e)
   }
 })
+
 
