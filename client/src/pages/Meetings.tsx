@@ -509,7 +509,7 @@ export default function Meetings() {
               {dayItems.length === 0 ? (
                 <div className="text-sm opacity-70">No meetings.</div>
               ) : (
-                <ul className="divide-y divide-gray-200 dark:divide-neutral-800">
+                <ul className="divide-y divide-gray-200 dark:divide-neutral-800 max-h-[70vh] overflow-y-auto overflow-x-hidden pr-1">
                   {dayItems
                     .slice()
                     .sort((a, b) => (a.start_at < b.start_at ? -1 : 1))
@@ -1009,4 +1009,3 @@ function MonthView({ date, meetings, onDayClick }: { date: Date; meetings: Meeti
     </div>
   )
 }
-
