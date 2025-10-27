@@ -1009,3 +1009,4 @@ function MonthView({ date, meetings, onDayClick }: { date: Date; meetings: Meeti
     </div>
   )
 }
+

@@ -183,7 +183,7 @@ Modules:
 - Store internally; calendar sync deferred.
 - Notify attendees via in-app notifications.
 
-**vNext**: Google/Outlook sync, recurring meetings, room resources.
+**vNext**: Google/Outlook sync, recurring meetings, room resources, export meetings list to CSV.
 
 ### Model (Conceptual)
 - **Meeting**: title, start_at, end_at, location, organizer (HR/Admin), attendees (employees, internal users, and/or external contacts).
@@ -192,7 +192,6 @@ Modules:
 ### Action (Intents)
 - Create/update/cancel meetings.
 - List/filter meetings by date range/attendees.
-- Export meetings list to CSV.
 
 ### Data (Conceptual)
 - Entities: `Meeting`, `MeetingAttendee`.

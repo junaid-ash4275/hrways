@@ -78,7 +78,7 @@ routes.get('/healthz', async (_req, res) => {
          UNION ALL
          SELECT created_at AS at, 'LEAVE' AS kind, id::text AS ref, NULL::text AS title, '/attendance' AS link FROM leave_requests
          UNION ALL
-         SELECT created_at AS at, 'MEETING' AS kind, id::text AS ref, title AS title, ('/meetings?open=' || id::text) AS link FROM meetings
+         SELECT created_at AS at, 'MEETING' AS kind, id::text AS ref, title AS title, '/meetings' AS link FROM meetings
          UNION ALL
          SELECT created_at AS at, 'DOCUMENT' AS kind, id::text AS ref, filename AS title, '/employees' AS link FROM employee_documents
        ) t
