@@ -14,7 +14,7 @@ import {
 type Kpis = {
   employeesTotal: number
   onLeaveToday: number
-  leavePending: number
+  birthdaysThisMonth: number
   meetingsThisWeek: number
 }
 
@@ -108,7 +108,7 @@ export default function Dashboard() {
                 value={kpis?.employeesTotal ?? 0}
                 icon={<UsersIcon className="h-4 w-4" />}
                 tint="from-emerald-500/20 to-teal-500/20"
-                to="/employees"
+                to="/celebrations"
               />
               <KpiCard
                 title="On Leave Today"
@@ -118,11 +118,11 @@ export default function Dashboard() {
                 to="/attendance"
               />
               <KpiCard
-                title="Leave Pending"
-                value={kpis?.leavePending ?? 0}
-                icon={<ClipboardDocumentListIcon className="h-4 w-4" />}
+                title="Birthdays/Anniversaries"
+                value={kpis?.birthdaysThisMonth ?? 0}
+                icon={<CalendarDaysIcon className="h-4 w-4" />}
                 tint="from-amber-500/20 to-orange-500/20"
-                to="/attendance"
+                to="/celebrations"
               />
               <KpiCard
                 title="Meetings This Week"
@@ -167,7 +167,7 @@ export default function Dashboard() {
         <div className="mt-8">
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-lg font-semibold">Recent Activity</h3>
-            <Link to="/employees" className="text-sm underline opacity-80 hover:opacity-100">View all</Link>
+            <Link to="/celebrations" className="text-sm underline opacity-80 hover:opacity-100">View all</Link>
           </div>
           {activityError && (
             <div className="mb-2 text-sm text-red-600 dark:text-red-400">{activityError}</div>
@@ -472,3 +472,4 @@ function formatTime(iso: string) {
   const d = new Date(iso)
   return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
 }
+

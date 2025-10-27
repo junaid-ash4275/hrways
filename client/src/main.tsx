@@ -8,7 +8,7 @@ import Employees from './pages/Employees'
 import Attendance from './pages/Attendance'
 import Meetings from './pages/Meetings'
 import Payroll from './pages/Payroll'
-import Settings from './pages/Settings'
+import Celebrations from './pages/Celebrations'
 import SettingsProfile from './pages/settings/Profile'
 import SettingsPassword from './pages/settings/Password'
 import SettingsPreferences from './pages/settings/Preferences'
@@ -21,6 +21,7 @@ import Protected from './shared/Protected'
 import ForgotPassword from './pages/ForgotPassword'
 import VerifyReset from './pages/VerifyReset'
 import ResetPassword from './pages/ResetPassword'
+import Settings from './pages/Settings'
 
 const router = createBrowserRouter([
   {
@@ -35,6 +36,7 @@ const router = createBrowserRouter([
       { path: 'employees', element: <Employees /> },
       { path: 'attendance', element: <Attendance /> },
       { path: 'meetings', element: <Meetings /> },
+      { path: 'celebrations', element: <Celebrations /> },
       { path: 'payroll', element: <Payroll /> },
       {
         path: 'settings',
@@ -67,3 +69,6 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
     </AuthProvider>
   </React.StrictMode>
 )
+
+
+
