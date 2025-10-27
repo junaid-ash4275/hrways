@@ -651,8 +651,16 @@ routes.put('/meetings/:id', authGuard('HR'), async (req, res, next) => {
         runId = existing.rows[0].id;
       } else {
         const userId = (req as any).user?.id as string | undefined;
-        const ins = await client.query('INSERT INTO payroll_runs(run_month, status, created_by) VALUES ($1, $2, $3) RETURNING id', [runMonthStr, 'PENDING', userId || null]);
-        runId = ins.rows[0].id;
+        // Insert with optional created_by column depending on schema
+        const cols = await client.query(`SELECT column_name FROM information_schema.columns WHERE table_schema='public' AND table_name='payroll_runs'`);
+        const hasCreatedBy = cols.rows.some((r: any) => r.column_name === 'created_by');
+        if (hasCreatedBy) {
+          const ins = await client.query('INSERT INTO payroll_runs(run_month, status, created_by) VALUES ($1, $2, $3) RETURNING id', [runMonthStr, 'PENDING', userId || null]);
+          runId = ins.rows[0].id;
+        } else {
+          const ins = await client.query('INSERT INTO payroll_runs(run_month, status) VALUES ($1, $2) RETURNING id', [runMonthStr, 'PENDING']);
+          runId = ins.rows[0].id;
+        }
       }
 
       // Generate payslips for ACTIVE employees with a salary profile effective on/before runMonth
