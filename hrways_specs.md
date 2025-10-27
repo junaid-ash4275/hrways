@@ -202,27 +202,45 @@ Modules:
 ## 6) Payroll & Finance
 
 ### Behavior (MVP)
-- Maintain salary data per employee (records managed by `HR`).
-- Process monthly payroll; generate payslips.
-- Track reimbursements/expenses.
-- Export payslips (PDF/ZIP) and payroll CSV.
+- Currency is PKR across payroll UI and calculations.
+- HR configures per-employee salary via effective-dated profiles with explicit breakdown in PKR:
+  - basic pay, gym allowance, food allowance, fuel allowance, tax per month.
+- HR can update the current salary at any time (new effective profile takes effect from selected month).
+- Track medical received per employee per month (amount in PKR with optional note).
+- Generate a payslip per employee for a selected month from the employee’s payroll detail view.
+- UI: Payroll screen lists employees; selecting one opens salary breakdown, history, medical records, recent payslips, and a “Generate Payslip” button.
 
-**vNext**: tax rules, bonuses, bank integrations.
+**vNext**: month summary exports (CSV/PDF), bank integrations, bonuses, automated tax rules.
 
 ### Model (Conceptual)
-- **SalaryProfile**: employee_ref, base, allowances, deductions, effective_from.
-- **PayrollRun**: run_month, status.
-- **Payslip**: payroll_run_ref, employee_ref, gross, net, breakdown.
+- **SalaryProfile**: employee_ref, effective_from (month start),
+  - basic_pay_pkr, gym_allowance_pkr, food_allowance_pkr, fuel_allowance_pkr, tax_pkr.
+- **Payslip**: employee_ref, month (YYYY-MM, or run_ref), gross_pkr, net_pkr, breakdown JSON.
+- **MedicalBenefit**: employee_ref, month (YYYY-MM), amount_pkr, note, created_at.
+- Optional (summary/audit): **PayrollRun**: run_month, status (secondary, for monthly summaries).
 
 ### Action (Intents)
-- Upsert salary profile.
-- Execute payroll run for a month.
-- List/search payroll & payslips.
-- Export payslips (ZIP/PDF) and payroll CSV.
+- Manage salary profiles (PKR): create/update effective-dated profiles with breakdown.
+- Employees payroll list/detail: list employees with current salary; fetch an employee’s payroll detail (current profile, history, medical, payslips).
+- Generate payslip (per employee, per month): idempotent by employee+month.
+- Medical tracking: create/list/update monthly medical received per employee.
+- List/search payslips (per employee, filters by month); export (vNext).
 
 ### Data (Conceptual)
-- Entities: `SalaryProfile`, `PayrollRun`, `Payslip`.
-- Relationships: `PayrollRun` 1:N `Payslip`; `Employee` 1:N `SalaryProfile`.
+- Entities: `SalaryProfile`, `Payslip`, `MedicalBenefit` (optional `PayrollRun`).
+- Relationships: `Employee` 1:N `SalaryProfile`; `Employee` 1:N `Payslip`; `Employee` 1:N `MedicalBenefit`.
+
+### User Stories (MVP)
+- HRW-PAY-1: Manage Salary Profiles (PKR)
+  - As HR, I can create/update an employee’s salary profile with breakdown: basic pay, gym, food, fuel, tax (all PKR), effective from a selected month.
+- HRW-PAY-2: Payroll Employee List + Detail
+  - As HR, I can view a list of employees and open a payroll detail view showing current salary breakdown (PKR), salary history, medical records, and recent payslips.
+- HRW-PAY-3: Generate Payslip (Per Employee)
+  - As HR, from an employee’s payroll detail, I can select a month (YYYY-MM) and generate a payslip using the active profile as of that month; re-running is idempotent for the same employee+month.
+- HRW-PAY-4: Medical Tracking
+  - As HR, I can record and view monthly medical amounts (PKR) received by an employee, with an optional note.
+- HRW-PAY-5: Payslip Listing & Export (vNext)
+  - As HR, I can list/filter payslips and export summaries to CSV/PDF; monthly aggregation remains optional.
 
 ---
 
@@ -352,7 +370,7 @@ server/src/
 2. **Milestone B (Employees + Search/Filter + Export CSV)**.
 3. **Milestone C (Attendance/Leave + Export PDF)**.
 4. **Milestone D (Meetings basic + notifications).**
-5. **Milestone E (Payroll run + payslips CSV/PDF/ZIP).**
+5. **Milestone E (Payroll employee-centric + payslips; exports).**
 6. **Stabilize**: tests, perf, accessibility.
 
 ---
