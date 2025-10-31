@@ -98,10 +98,10 @@ export default function Sidebar() {
                         return (
                           <div
                             className={`group flex items-center gap-3 rounded-md px-3 py-2 transition
-                              focus:outline-none focus:ring-2 focus:ring-emerald-500 border border-transparent
+                              focus:outline-none focus:ring-2 brand-ring border border-transparent
                               ${active
                                 ? 'brand-gradient text-white shadow'
-                                : 'text-gray-700 dark:text-gray-200 hover:bg-emerald-50 dark:hover:bg-emerald-900/20'}`}
+                                : 'text-gray-700 dark:text-gray-200 brand-hover'}`}
                           >
                             <item.Icon className={`h-5 w-5 ${active ? 'text-white opacity-100' : 'opacity-80 group-hover:opacity-100'}`} />
                             {expanded && <span className="truncate">{t(item.label)}</span>}
@@ -120,8 +120,8 @@ export default function Sidebar() {
                     type="button"
                     aria-expanded={open}
                     className={`w-full group flex items-center gap-3 rounded-md px-3 py-2 transition text-left
-                      focus:outline-none focus:ring-2 focus:ring-emerald-500 border border-transparent
-                      ${open ? 'bg-emerald-50 dark:bg-emerald-900/20' : 'hover:bg-emerald-50 dark:hover:bg-emerald-900/20'}
+                      focus:outline-none focus:ring-2 brand-ring border border-transparent
+                      ${open ? 'brand-open' : 'brand-hover'}
                       text-gray-700 dark:text-gray-200`}
                     onClick={() => setSettingsOpen(!open)}
                   >
@@ -137,10 +137,10 @@ export default function Sidebar() {
                             {({ isActive }) => (
                               <div
                                 className={`group flex items-center gap-3 rounded-md px-3 py-2 transition
-                                  focus:outline-none focus:ring-2 focus:ring-emerald-500 border border-transparent
+                                  focus:outline-none focus:ring-2 brand-ring border border-transparent
                                   ${isActive
                                     ? 'brand-gradient text-white shadow'
-                                    : 'text-gray-700 dark:text-gray-200 hover:bg-emerald-50 dark:hover:bg-emerald-900/20'}`}
+                                    : 'text-gray-700 dark:text-gray-200 brand-hover'}`}
                               >
                                 <child.Icon className={`h-5 w-5 ${isActive ? 'text-white opacity-100' : 'opacity-75 group-hover:opacity-100'}`} />
                                 <span className="truncate text-sm">{t(child.label)}</span>
@@ -159,3 +159,4 @@ export default function Sidebar() {
     </aside>
   )
 }
+

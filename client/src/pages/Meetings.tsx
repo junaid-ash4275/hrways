@@ -256,7 +256,7 @@ export default function Meetings() {
             <div className="inline-flex rounded-md border border-gray-200 dark:border-neutral-800 overflow-hidden">
               {(['calendar', 'list'] as const).map((m) => (
                 <button key={m}
-                  className={`px-3 py-1.5 text-sm font-medium min-w-[100px] text-center ${mode === m ? 'bg-emerald-600 text-white' : 'hover:bg-emerald-50 dark:hover:bg-emerald-900/20'}`}
+                  className={`px-3 py-1.5 text-sm font-medium min-w-[100px] text-center ${mode === m ? 'brand-gradient text-white' : 'brand-hover'}`}
                   onClick={() => setMode(m)}>{m}</button>
               ))}
             </div>
@@ -265,14 +265,14 @@ export default function Meetings() {
                 <div className="inline-flex rounded-md border border-gray-200 dark:border-neutral-800 overflow-hidden">
                   {(['day', 'week', 'month'] as const).map((v) => (
                     <button key={v}
-                      className={`px-2.5 py-1 text-sm ${view === v ? 'bg-emerald-600 text-white' : 'hover:bg-emerald-50 dark:hover:bg-emerald-900/20'}`}
+                      className={`px-2.5 py-1 text-sm ${view === v ? 'brand-gradient text-white' : 'brand-hover'}`}
                       onClick={() => setView(v)}>{v}</button>
                   ))}
                 </div>
                 <div className="inline-flex rounded-md border border-gray-200 dark:border-neutral-800 overflow-hidden">
-                  <button className="px-2.5 py-1 text-sm hover:bg-emerald-50 dark:hover:bg-emerald-900/20" onClick={() => setCursor(addDays(cursor, view === 'day' ? -1 : view === 'week' ? -7 : -30))}>Prev</button>
-                  <button className="px-2.5 py-1 text-sm hover:bg-emerald-50 dark:hover:bg-emerald-900/20" onClick={() => setCursor(new Date())}>Today</button>
-                  <button className="px-2.5 py-1 text-sm hover:bg-emerald-50 dark:hover:bg-emerald-900/20" onClick={() => setCursor(addDays(cursor, view === 'day' ? 1 : view === 'week' ? 7 : 30))}>Next</button>
+                  <button className="px-2.5 py-1 text-sm brand-hover" onClick={() => setCursor(addDays(cursor, view === 'day' ? -1 : view === 'week' ? -7 : -30))}>Prev</button>
+                  <button className="px-2.5 py-1 text-sm brand-hover" onClick={() => setCursor(new Date())}>Today</button>
+                  <button className="px-2.5 py-1 text-sm brand-hover" onClick={() => setCursor(addDays(cursor, view === 'day' ? 1 : view === 'week' ? 7 : 30))}>Next</button>
                 </div>
               </>
             )}
@@ -325,7 +325,7 @@ export default function Meetings() {
                         {lEmpResults.map((e) => (
                           <li key={e.id} className="px-3 py-1.5 text-sm flex items-center justify-between gap-2">
                             <div className="min-w-0 truncate">{e.name} <span className="opacity-70">{e.email}</span></div>
-                            <button type="button" className="text-xs px-2 py-0.5 rounded border border-emerald-300 dark:border-emerald-800 hover:bg-emerald-50 dark:hover:bg-emerald-900/20" onClick={() => { setLEmpId(e.id); setLEmpQuery(e.name); setLEmpResults([]); setLPage(1) }}>Use</button>
+                            <button type="button" className="text-xs px-2 py-0.5 rounded border brand-border-soft  brand-hover" onClick={() => { setLEmpId(e.id); setLEmpQuery(e.name); setLEmpResults([]); setLPage(1) }}>Use</button>
                           </li>
                         ))}
                       </ul>
@@ -373,7 +373,7 @@ export default function Meetings() {
                         </td>
                         <td className="py-2 pr-2">{new Date(m.start_at).toLocaleString()}</td>
                         <td className="py-2 pr-2">{new Date(m.end_at).toLocaleString()}</td>
-                        <td className="py-2 pr-2"><span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border ${m.status === 'CANCELLED' ? 'border-red-300 text-red-600 dark:border-red-800 dark:text-red-400' : 'border-emerald-300 text-emerald-700 dark:border-emerald-800 dark:text-emerald-300'}`}>{m.status}</span></td>
+                        <td className="py-2 pr-2"><span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border ${m.status === 'CANCELLED' ? 'border-red-300 text-red-600 dark:border-red-800 dark:text-red-400' : 'brand-text brand-border-soft'}`}>{m.status}</span></td>
                         <td className="py-2 pr-2 text-right">
                           <div className="inline-flex items-center gap-2">
                             <button className="text-xs px-2 py-1 rounded border border-gray-300 dark:border-neutral-700 hover:bg-gray-100 dark:hover:bg-neutral-800" onClick={async () => { try { setDetailError(''); setDetailLoading(true); setDrawerOpen(true); const { data } = await http.get(`/meetings/${m.id}`); setDetail(data); setEditTitle(data.title || ''); setEditStartLocal(isoToLocal(data.start_at)); setEditEndLocal(isoToLocal(data.end_at)); setReplaceAtt(false); setESelectedEmployees(data.attendees?.employees || []); const ex = (data.attendees?.externals || [])[0] || {}; setEExtName(ex.name || ''); setEExtEmail(ex.email || ''); setEExtPhone(ex.phone || ''); setETab('internal'); setEditing(true) } finally { setDetailLoading(false) } }}>Edit</button>
@@ -429,7 +429,7 @@ export default function Meetings() {
                   <div className="mb-3 inline-flex rounded-md border border-gray-200 dark:border-neutral-800 overflow-hidden">
                     {(['internal', 'external'] as const).map((t) => (
                       <button key={t} type="button"
-                        className={`px-4 py-1.5 text-sm font-medium min-w-[120px] text-center ${tab === t ? 'bg-emerald-600 text-white' : 'hover:bg-emerald-50 dark:hover:bg-emerald-900/20'}`}
+                        className={`px-4 py-1.5 text-sm font-medium min-w-[120px] text-center ${tab === t ? 'brand-gradient text-white' : 'brand-hover'}`}
                         onClick={() => setTab(t)}>{t}</button>
                     ))}
                   </div>
@@ -446,7 +446,7 @@ export default function Meetings() {
                         {selectedEmployees.length > 0 && (
                           <div className="mb-2 flex flex-wrap gap-2">
                             {selectedEmployees.map((e) => (
-                              <span key={e.id} className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border border-emerald-300 text-emerald-700 dark:border-emerald-800 dark:text-emerald-300">
+                              <span key={e.id} className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border brand-text brand-border-soft">
                                 {e.name || e.email}
                                 <button type="button" className="ml-1 opacity-80 hover:opacity-100" onClick={() => setSelectedEmployees((arr) => arr.filter((x) => x.id !== e.id))}>×</button>
                               </span>
@@ -464,7 +464,7 @@ export default function Meetings() {
                                   <div className="text-xs opacity-70 truncate">{e.email} {e.employee_code ? `· ${e.employee_code}` : ''}</div>
                                 </div>
                                 <button type="button"
-                                  className="text-xs px-2 py-1 rounded border border-emerald-300 dark:border-emerald-800 hover:bg-emerald-50 dark:hover:bg-emerald-900/20"
+                                  className="text-xs px-2 py-1 rounded border brand-border-soft  brand-hover"
                                   onClick={() => {
                                     setSelectedEmployees((arr) => (arr.some(x => x.id === e.id) ? arr : [...arr, e]))
                                   }}
@@ -660,7 +660,7 @@ export default function Meetings() {
                   <>
                     <button
                       disabled={savingEdit}
-                      className={`text-xs px-2 py-1 rounded border border-emerald-300 dark:border-emerald-800 ${savingEdit ? 'opacity-60' : 'hover:bg-emerald-50 dark:hover:bg-emerald-900/20'} text-emerald-700 dark:text-emerald-300`}
+                      className={`text-xs px-2 py-1 rounded border brand-border-soft  ${savingEdit ? 'opacity-60' : 'brand-hover'} brand-text`}
                       onClick={async () => {
                         try {
                           setSavingEdit(true)
@@ -739,7 +739,7 @@ export default function Meetings() {
                       <div className="mb-3 inline-flex rounded-md border border-gray-200 dark:border-neutral-800 overflow-hidden">
                         {(['internal', 'external'] as const).map((t) => (
                           <button key={t} type="button"
-                            className={`px-4 py-1.5 text-sm font-medium min-w-[120px] text-center ${eTab === t ? 'bg-emerald-600 text-white' : 'hover:bg-emerald-50 dark:hover:bg-emerald-900/20'}`}
+                            className={`px-4 py-1.5 text-sm font-medium min-w-[120px] text-center ${eTab === t ? 'brand-gradient text-white' : 'brand-hover'}`}
                             onClick={() => setETab(t)}>{t}</button>
                         ))}
                       </div>
@@ -756,7 +756,7 @@ export default function Meetings() {
                             {eSelectedEmployees.length > 0 && (
                               <div className="mb-2 flex flex-wrap gap-2">
                                 {eSelectedEmployees.map((e) => (
-                                  <span key={e.id} className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border border-emerald-300 text-emerald-700 dark:border-emerald-800 dark:text-emerald-300">
+                                  <span key={e.id} className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border brand-text brand-border-soft">
                                     {e.name || e.email}
                                     <button type="button" className="ml-1 opacity-80 hover:opacity-100" onClick={() => setESelectedEmployees((arr) => arr.filter((x) => x.id !== e.id))}>×</button>
                                   </span>
@@ -774,7 +774,7 @@ export default function Meetings() {
                                       <div className="text-xs opacity-70 truncate">{e.email} {e.employee_code ? `- ${e.employee_code}` : ''}</div>
                                     </div>
                                     <button type="button"
-                                      className="text-xs px-2 py-1 rounded border border-emerald-300 dark:border-emerald-800 hover:bg-emerald-50 dark:hover:bg-emerald-900/20"
+                                      className="text-xs px-2 py-1 rounded border brand-border-soft  brand-hover"
                                       onClick={() => {
                                         setESelectedEmployees((arr) => (arr.some(x => x.id === e.id) ? arr : [...arr, e]))
                                       }}
@@ -817,7 +817,7 @@ export default function Meetings() {
                   </div>
                   <div>
                     <div className="text-sm opacity-70">Status</div>
-                    <div className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border ${detail.status === 'CANCELLED' ? 'border-red-300 text-red-600 dark:border-red-800 dark:text-red-400' : 'border-emerald-300 text-emerald-700 dark:border-emerald-800 dark:text-emerald-300'}`}>{detail.status}</div>
+                    <div className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border ${detail.status === 'CANCELLED' ? 'border-red-300 text-red-600 dark:border-red-800 dark:text-red-400' : 'brand-text brand-border-soft'}`}>{detail.status}</div>
                   </div>
                   <div>
                     <div className="text-sm font-semibold mb-2">Attendees</div>
@@ -984,7 +984,7 @@ function MonthView({ date, meetings, onDayClick }: { date: Date; meetings: Meeti
         return (
           <div
             key={key}
-            className={`rounded border border-gray-200 dark:border-neutral-800 p-2 min-h-[84px] ${dim ? 'opacity-60' : ''} cursor-pointer hover:bg-emerald-50 dark:hover:bg-emerald-900/20`}
+            className={`rounded border border-gray-200 dark:border-neutral-800 p-2 min-h-[84px] ${dim ? 'opacity-60' : ''} cursor-pointer brand-hover`}
             onClick={() => onDayClick?.(d)}
             role="button"
             aria-label={`Open meetings for ${d.toDateString()}`}
@@ -1009,4 +1009,5 @@ function MonthView({ date, meetings, onDayClick }: { date: Date; meetings: Meeti
     </div>
   )
 }
+
 

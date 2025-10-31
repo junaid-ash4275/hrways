@@ -47,7 +47,7 @@ export default function Topbar() {
   return (
     <header className="relative z-50 h-14 border-b border-gray-200 dark:border-neutral-800 flex items-center justify-between px-4 bg-white md:bg-white/60 dark:bg-neutral-900 md:dark:bg-neutral-900/60 backdrop-blur">
       <div className="flex items-center gap-3 min-w-0">
-        <button onClick={() => { setMobileOpen((v) => !v); toggleSidebar() }} className="p-2 rounded-lg border border-gray-300 dark:border-neutral-700 hover:bg-gray-100 dark:hover:bg-neutral-800 focus:outline-none focus:ring-2 focus:ring-emerald-500" aria-label="Toggle menu" title="Toggle menu">
+        <button onClick={() => { setMobileOpen((v) => !v); toggleSidebar() }} className="p-2 rounded-lg border border-gray-300 dark:border-neutral-700 hover:bg-gray-100 dark:hover:bg-neutral-800 focus:outline-none focus:ring-2 brand-ring" aria-label="Toggle menu" title="Toggle menu">
           <Bars3Icon className="h-5 w-5" />
         </button>
         <div className="text-sm opacity-80 truncate">
@@ -58,12 +58,12 @@ export default function Topbar() {
         <div className="text-xs opacity-70 px-2 py-1 rounded border border-gray-200 dark:border-neutral-800">
           {timeLabel}
         </div>
-        <button className="relative p-2 rounded-lg border border-gray-300 dark:border-neutral-700 hover:bg-gray-100 dark:hover:bg-neutral-800 focus:outline-none focus:ring-2 focus:ring-emerald-500" aria-label="Notifications" title="Notifications">
+        <button className="relative p-2 rounded-lg border border-gray-300 dark:border-neutral-700 hover:bg-gray-100 dark:hover:bg-neutral-800 focus:outline-none focus:ring-2 brand-ring" aria-label="Notifications" title="Notifications">
           <BellIcon className="h-5 w-5" />
-          <span className="absolute -top-1 -right-1 text-[10px] bg-emerald-600 text-white rounded-full px-1.5">3</span>
+          <span className="absolute -top-1 -right-1 text-[10px] brand-badge rounded-full px-1.5">3</span>
         </button>
         <button
-          className="p-2 rounded-lg border border-gray-300 dark:border-neutral-700 hover:bg-gray-100 dark:hover:bg-neutral-800 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+          className="p-2 rounded-lg border border-gray-300 dark:border-neutral-700 hover:bg-gray-100 dark:hover:bg-neutral-800 focus:outline-none focus:ring-2 brand-ring"
           aria-label="Toggle theme"
           title="Toggle theme"
           onClick={() => {
@@ -82,7 +82,7 @@ export default function Topbar() {
         </button>
         {user && (
           <button
-            className="p-2 rounded-lg border border-gray-300 dark:border-neutral-700 hover:bg-gray-100 dark:hover:bg-neutral-800 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            className="p-2 rounded-lg border border-gray-300 dark:border-neutral-700 hover:bg-gray-100 dark:hover:bg-neutral-800 focus:outline-none focus:ring-2 brand-ring"
             aria-label="Logout"
             title="Logout"
             onClick={async () => {
@@ -110,7 +110,7 @@ export default function Topbar() {
                       <li key={item.to ?? idx}>
                         <NavLink to={item.to} end={item.to === '/'} onClick={() => setMobileOpen(false)}>
                           {({ isActive }) => (
-                            <div className={`flex items-center gap-3 px-3 py-2 rounded-md ${isActive ? 'bg-emerald-50 dark:bg-emerald-900/20' : 'hover:bg-emerald-50 dark:hover:bg-emerald-900/20'}`}>
+                            <div className={`flex items-center gap-3 px-3 py-2 rounded-md ${isActive ? 'brand-open' : 'brand-hover'}`}>
                               <item.Icon className="h-5 w-5 opacity-80" />
                               <span className="truncate">{t(item.label)}</span>
                             </div>
@@ -128,7 +128,7 @@ export default function Topbar() {
                           <li key={child.to}>
                             <NavLink to={child.to} onClick={() => setMobileOpen(false)}>
                               {({ isActive }) => (
-                                <div className={`flex items-center gap-3 px-3 py-2 rounded-md ${isActive ? 'bg-emerald-50 dark:bg-emerald-900/20' : 'hover:bg-emerald-50 dark:hover:bg-emerald-900/20'}`}>
+                                <div className={`flex items-center gap-3 px-3 py-2 rounded-md ${isActive ? 'brand-open' : 'brand-hover'}`}>
                                   <child.Icon className="h-5 w-5 opacity-80" />
                                   <span className="truncate text-sm">{t(child.label)}</span>
                                 </div>
@@ -147,3 +147,5 @@ export default function Topbar() {
     </header>
   )
 }
+
+

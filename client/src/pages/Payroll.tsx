@@ -154,7 +154,7 @@ export default function Payroll() {
                 <label className="block text-sm mb-1">Month</label>
                 <input type="month" value={month} onChange={(e) => setMonth(e.target.value)} className="rounded border border-gray-300 dark:border-neutral-700 bg-transparent px-3 py-2" />
               </div>
-              <button disabled={creating} className={`px-3 py-2 rounded text-white ${creating ? 'bg-emerald-400' : 'bg-emerald-600 hover:bg-emerald-700'}`}>{creating ? 'Creating...' : 'Run Payroll'}</button>
+              <button disabled={creating} className={`px-3 py-2 rounded brand-gradient text-white disabled:opacity-50`}>{creating ? 'Creating...' : 'Run Payroll'}</button>
               <p className="text-xs opacity-70">Generates payslips for active employees with a salary profile effective on/before the selected month.</p>
             </form>
           </div>
@@ -205,7 +205,7 @@ export default function Payroll() {
                 <label className="block text-sm mb-1">Effective From</label>
                 <input type="month" value={eff} onChange={(e) => setEff(e.target.value)} className="rounded border border-gray-300 dark:border-neutral-700 bg-transparent px-3 py-2" />
               </div>
-              <button disabled={savingProfile || !selEmp} className={`px-3 py-2 rounded text-white ${savingProfile ? 'bg-emerald-400' : 'bg-emerald-600 hover:bg-emerald-700'}`}>{savingProfile ? 'Saving...' : 'Save Profile'}</button>
+              <button disabled={savingProfile || !selEmp} className={`px-3 py-2 rounded brand-gradient text-white disabled:opacity-50`}>{savingProfile ? 'Saving...' : 'Save Profile'}</button>
               <p className="text-xs opacity-70">Add or update an employee's salary. Latest effective month is used for a payroll run.</p>
             </form>
           </div>
@@ -237,7 +237,7 @@ export default function Payroll() {
                   runs.map((r) => (
                     <tr key={r.id} className="border-t border-gray-200 dark:border-neutral-800">
                       <td className="py-2 pr-2">{formatMonth(r.run_month)}</td>
-                      <td className="py-2 pr-2"><span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border ${r.status === 'COMPLETED' ? 'border-emerald-300 text-emerald-700 dark:border-emerald-800 dark:text-emerald-300' : 'border-gray-300 dark:border-neutral-700'}`}>{r.status}</span></td>
+                      <td className="py-2 pr-2"><span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border ${r.status === 'COMPLETED' ? 'brand-text brand-border-soft' : 'border-gray-300 dark:border-neutral-700'}`}>{r.status}</span></td>
                       <td className="py-2 pr-2">{r.payslip_count}</td>
                       <td className="py-2 pr-2">{formatCurrency(r.total_net)}</td>
                       <td className="py-2 pr-2 text-right"><button className="px-2 py-1 rounded border border-gray-300 dark:border-neutral-700 hover:bg-gray-100 dark:hover:bg-neutral-800" onClick={() => { setSelRun(r); setSPage(1) }}>View</button></td>
@@ -324,3 +324,4 @@ function formatCurrency(n: number | string) {
   if (!Number.isFinite(v)) return String(n)
   try { return v.toLocaleString(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 2 }) } catch { return v.toFixed(2) }
 }
+

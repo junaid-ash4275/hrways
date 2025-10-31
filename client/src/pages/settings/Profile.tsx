@@ -70,7 +70,7 @@ export default function SettingsProfile() {
           <div className="text-sm opacity-80 truncate">{user?.email}</div>
         </div>
         {user?.role && (
-          <span className="text-xs px-2 py-1 rounded-full border border-emerald-500 text-emerald-700 dark:text-emerald-400">
+          <span className="text-xs px-2 py-1 rounded-full border brand-border-soft brand-text">
             {user.role}
           </span>
         )}
@@ -83,7 +83,7 @@ export default function SettingsProfile() {
           <div className="text-xs opacity-70">Completeness: {completeness}%</div>
         </div>
         <div className="w-full h-1.5 bg-gray-200 dark:bg-neutral-700 rounded mb-4 overflow-hidden">
-          <div className="h-full bg-emerald-500" style={{ width: `${completeness}%` }} />
+          <div className="h-full brand-badge" style={{ width: `${completeness}%` }} />
         </div>
         <div className="grid md:grid-cols-3 gap-4">
           <div>
@@ -118,9 +118,10 @@ export default function SettingsProfile() {
       </form>
 
       {/* Helpful tips */}
-      <div className="bg-emerald-50 dark:bg-emerald-900/10 text-emerald-800 dark:text-emerald-300 rounded-xl border border-emerald-200/60 dark:border-emerald-900/30 p-4 text-sm">
+      <div className="brand-open text-emerald-800 dark:text-emerald-300 rounded-xl border border-emerald-200/60 dark:border-emerald-900/30 p-4 text-sm">
         Tip: Keeping your name and title updated helps teammates find you quickly across modules.
       </div>
     </div>
   )
 }
+

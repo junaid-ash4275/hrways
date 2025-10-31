@@ -5,6 +5,7 @@ import { SunIcon, MoonIcon } from '@heroicons/react/24/outline'
 import { useI18n } from '../../i18n/i18n'
 
 type Theme = 'light' | 'dark'
+type Brand = 'emerald' | 'blue' | 'orange' | 'violet' | 'rose'
 
 export default function SettingsPreferences() {
   const [theme, setTheme] = useState<Theme>(() => (document.documentElement.classList.contains('dark') ? 'dark' : 'light'))
@@ -16,6 +17,7 @@ export default function SettingsPreferences() {
   })
   const [language, setLanguage] = useState<string>(() => localStorage.getItem('lang') || 'en-US')
   const [timezone, setTimezone] = useState<string>(() => localStorage.getItem('timezone') || 'UTC')
+  const [brandVariant, setBrandVariant] = useState<Brand>(() => (localStorage.getItem('brandVariant') as Brand) || 'emerald')
 
   useEffect(() => {
     http
@@ -26,6 +28,8 @@ export default function SettingsPreferences() {
         if (t === 'light' || t === 'dark') setTheme(t)
         const s = Number(prefs?.textScale)
         if (Number.isFinite(s) && s >= 90 && s <= 120) setTextScale(Math.round(s))
+        const b = prefs?.brandVariant
+        if (typeof b === 'string' && b) setBrandVariant(b as Brand)
       })
       .catch(() => {})
   }, [])
@@ -60,12 +64,21 @@ export default function SettingsPreferences() {
     }
   }
 
+  const applyBrand = (b: Brand) => {
+    const root = document.documentElement
+    const all = ['brand-emerald','brand-blue','brand-orange','brand-violet','brand-rose']
+    all.forEach((c) => root.classList.remove(c))
+    root.classList.add(`brand-${b}`)
+    localStorage.setItem('brandVariant', b)
+  }
+
   const onSave = async () => {
     try {
-      await http.put('/me/preferences', { theme, textScale, language, timezone })
+      await http.put('/me/preferences', { theme, textScale, language, timezone, brandVariant })
       applyTheme(theme)
       applyTextScale(textScale)
       applyLocale(language, timezone)
+      applyBrand(brandVariant)
       notify({ type: 'success', message: 'Preferences saved' })
     } catch {
       notify({ type: 'error', message: 'Failed to save preferences' })
@@ -112,6 +125,33 @@ export default function SettingsPreferences() {
         </div>
 
         <div className="mb-4">
+          <div className="text-sm font-medium mb-2">{t('Brand color')}</div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
+            {([
+              { key: 'emerald', cls: 'from-emerald-500 via-teal-500 to-cyan-500', label: 'Emerald' },
+              { key: 'blue', cls: 'from-sky-500 via-blue-500 to-indigo-500', label: 'Blue' },
+              { key: 'orange', cls: 'from-amber-500 via-orange-500 to-red-500', label: 'Orange' },
+              { key: 'violet', cls: 'from-fuchsia-500 via-violet-500 to-purple-500', label: 'Violet' },
+              { key: 'rose', cls: 'from-rose-500 via-pink-500 to-rose-700', label: 'Rose' },
+            ] as Array<{ key: Brand; cls: string; label: string }>).map((opt) => {
+              const active = brandVariant === opt.key
+              return (
+                <button
+                  key={opt.key}
+                  type="button"
+                  onClick={() => setBrandVariant(opt.key)}
+                  className={`group w-full text-left rounded-lg border p-2 transition ${active ? 'brand-border-soft dark:border-emerald-400 shadow' : 'border-gray-300 dark:border-neutral-700 hover:bg-gray-100 dark:hover:bg-neutral-800'}`}
+                  aria-pressed={active}
+                >
+                  <div className={`h-8 w-full rounded bg-gradient-to-br ${opt.cls} mb-2`} />
+                  <div className="text-sm">{t(opt.label)}</div>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
+        <div className="mb-4">
           <div className="flex items-center justify-between mb-1">
             <div className="text-sm font-medium">{t('Text size')}</div>
             <div className="text-xs opacity-70">{textScale}%</div>
@@ -124,7 +164,7 @@ export default function SettingsPreferences() {
               step={2}
               value={textScale}
               onChange={(e) => { const v = Number(e.target.value); setTextScale(v); }}
-              className="w-full accent-emerald-600"
+              className="w-full brand-accent"
             />
             <div className="flex justify-between text-[11px] opacity-70 mt-1">
               <span>90%</span>
@@ -139,7 +179,7 @@ export default function SettingsPreferences() {
         <div className="rounded-lg border border-gray-200 dark:border-neutral-700 overflow-hidden" style={previewStyle as any}>
           <div className="px-3 py-2 bg-gray-100 dark:bg-neutral-900 flex items-center justify-between">
             <div className="text-sm opacity-80">Topbar · {new Intl.DateTimeFormat(language, { dateStyle: 'medium', timeStyle: 'short', timeZone: timezone || undefined }).format(new Date())}</div>
-            <div className="h-2 w-2 rounded-full bg-emerald-500" />
+            <div className="h-2 w-2 rounded-full brand-badge" />
           </div>
           <div className="p-3 grid md:grid-cols-3 gap-3 bg-white dark:bg-neutral-800">
             <div className="rounded-md h-16 border border-gray-200 dark:border-neutral-700 flex items-center justify-center">Card</div>
@@ -188,3 +228,5 @@ export default function SettingsPreferences() {
     </div>
   )
 }
+
+

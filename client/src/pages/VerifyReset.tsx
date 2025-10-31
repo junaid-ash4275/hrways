@@ -30,7 +30,7 @@ export default function VerifyReset() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-neutral-900 text-gray-900 dark:text-gray-100 p-6">
-      <form onSubmit={onSubmit} className="w-full max-w-md bg-white dark:bg-neutral-800 rounded-2xl p-8 shadow-xl border border-emerald-100/50 dark:border-neutral-700">
+      <form onSubmit={onSubmit} className="w-full max-w-md bg-white dark:bg-neutral-800 rounded-2xl p-8 shadow-xl border brand-border-soft dark:border-neutral-700">
         <h1 className="text-xl font-semibold mb-2">Verify code</h1>
         <p className="text-sm opacity-80 mb-4">Enter the 6‑digit code sent to your email.</p>
         <label className="block text-sm mb-1" htmlFor="email">Email</label>
@@ -54,3 +54,4 @@ export default function VerifyReset() {
     </div>
   )
 }
+

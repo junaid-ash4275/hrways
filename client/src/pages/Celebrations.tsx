@@ -90,7 +90,7 @@ function SummaryCard({ title, value, icon, tint }: { title: string; value: numbe
     <div className={`rounded-xl border border-gray-200 dark:border-neutral-800 p-4 bg-white dark:bg-neutral-900 shadow-sm`}>
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className={`h-9 w-9 rounded-full bg-gradient-to-br ${tint} flex items-center justify-center text-emerald-700 dark:text-emerald-300`}>{icon}</div>
+          <div className={`h-9 w-9 rounded-full bg-gradient-to-br ${tint} flex items-center justify-center brand-text`}>{icon}</div>
           <div className="text-sm opacity-70">{title}</div>
         </div>
         <div className="text-2xl font-semibold">{value}</div>
@@ -113,7 +113,7 @@ function ListCard({ title, subtitle, empty, items, rightLabel }: { title: string
           {items.map((e) => (
             <li key={e.id} className="py-3 flex items-center justify-between gap-3">
               <div className="flex items-center gap-3 min-w-0">
-                <div className="h-9 w-9 rounded-full bg-gradient-to-br from-emerald-500/20 to-cyan-500/20 flex items-center justify-center text-emerald-700 dark:text-emerald-300 text-xs font-semibold">
+                <div className="h-9 w-9 rounded-full bg-gradient-to-br from-emerald-500/20 to-cyan-500/20 flex items-center justify-center brand-text text-xs font-semibold">
                   {initials(e.name)}
                 </div>
                 <div className="min-w-0">
@@ -149,3 +149,4 @@ function formatMonthDay(iso?: string) {
     return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
   } catch { return '' }
 }
+

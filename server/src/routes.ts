@@ -1815,6 +1815,14 @@ routes.put('/me/preferences', authGuard(), async (req, res, next) => {
       }
       prefs.language = lang
     }
+    if (prefs.brandVariant !== undefined) {
+      const v = String(prefs.brandVariant).trim().toLowerCase()
+      const allowed = ['emerald','blue','orange','violet','rose']
+      if (!allowed.includes(v)) {
+        return res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'brandVariant must be one of: emerald, blue, orange, violet, rose' } })
+      }
+      prefs.brandVariant = v
+    }
     if (prefs.timezone !== undefined) {
       const tz = String(prefs.timezone).trim()
       if (!tz) {
