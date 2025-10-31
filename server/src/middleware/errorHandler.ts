@@ -4,11 +4,14 @@ export function notFound(req: Request, res: Response) {
   res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Route not found' } });
 }
 
-export function errorHandler(err: any, req: Request, res: Response, _next: NextFunction) {
+export function errorHandler(err: any, req: Request, res: Response, next: NextFunction) {
+  // If headers already sent by a prior handler, delegate to Express' default handler
+  if (res.headersSent) {
+    return next(err);
+  }
   const status = typeof err?.status === 'number' ? err.status : 500;
   const code = err?.code || (status >= 500 ? 'INTERNAL_SERVER_ERROR' : 'BAD_REQUEST');
   const message = err?.message || 'Unexpected error';
   const details = err?.details;
   res.status(status).json({ error: { code, message, ...(details ? { details } : {}) } });
 }
-

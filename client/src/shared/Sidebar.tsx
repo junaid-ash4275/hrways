@@ -12,6 +12,9 @@ import {
   ClipboardDocumentListIcon,
   ShieldCheckIcon,
   ChevronDownIcon,
+  UserCircleIcon,
+  KeyIcon,
+  AdjustmentsHorizontalIcon,
 } from '@heroicons/react/24/outline'
 import logoUrl from '../assets/hrways-logo.svg'
 
@@ -28,9 +31,9 @@ export const navBase: Array<NavItem | NavGroup> = [
     label: 'Settings',
     Icon: Cog6ToothIcon,
     children: [
-      { to: '/settings/profile', label: 'Profile', Icon: Cog6ToothIcon },
-      { to: '/settings/password', label: 'Change Password', Icon: Cog6ToothIcon },
-      { to: '/settings/preferences', label: 'Preferences', Icon: Cog6ToothIcon },
+      { to: '/settings/profile', label: 'Profile', Icon: UserCircleIcon },
+      { to: '/settings/password', label: 'Change Password', Icon: KeyIcon },
+      { to: '/settings/preferences', label: 'Preferences', Icon: AdjustmentsHorizontalIcon },
     ],
   },
   { to: '/admin', label: 'Admin', Icon: ShieldCheckIcon, adminOnly: true },
@@ -139,7 +142,7 @@ export default function Sidebar() {
                                     ? 'brand-gradient text-white shadow'
                                     : 'text-gray-700 dark:text-gray-200 hover:bg-emerald-50 dark:hover:bg-emerald-900/20'}`}
                               >
-                                <child.Icon className={`h-4 w-4 ${isActive ? 'text-white opacity-100' : 'opacity-75 group-hover:opacity-100'}`} />
+                                <child.Icon className={`h-5 w-5 ${isActive ? 'text-white opacity-100' : 'opacity-75 group-hover:opacity-100'}`} />
                                 <span className="truncate text-sm">{t(child.label)}</span>
                               </div>
                             )}
@@ -156,4 +159,3 @@ export default function Sidebar() {
     </aside>
   )
 }
-

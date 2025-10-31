@@ -1564,11 +1564,12 @@ routes.delete('/employees/:id/documents/:docId', authGuard('HR'), async (req, re
 
 // HRW-RESET-1: Request password reset (OTP)
 routes.post('/auth/request-reset', async (req, res, next) => {
+  // Always 202 to avoid user enumeration; perform work best-effort afterwards
+  const email = (req.body?.email || '').toString().trim().toLowerCase()
+  res.status(202).json({ ok: true })
+
+  if (!email) return
   try {
-    const email = (req.body?.email || '').toString().trim().toLowerCase()
-    // Always 202 to avoid user enumeration
-    res.status(202).json({ ok: true })
-    if (!email) return
     const { rows } = await pool.query('SELECT id FROM users WHERE email = $1', [email])
     if (rows.length === 0) return
     const userId = rows[0].id as string
@@ -1585,7 +1586,8 @@ routes.post('/auth/request-reset', async (req, res, next) => {
     // Send the OTP email (or console log if SMTP not set)
     await sendOtpEmail(email, otp)
   } catch (e) {
-    next(e)
+    // Do not call next() after responding; just log
+    console.error('Password reset request processing failed:', e)
   }
 })
 

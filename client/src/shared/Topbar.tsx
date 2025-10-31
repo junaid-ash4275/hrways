@@ -129,7 +129,7 @@ export default function Topbar() {
                             <NavLink to={child.to} onClick={() => setMobileOpen(false)}>
                               {({ isActive }) => (
                                 <div className={`flex items-center gap-3 px-3 py-2 rounded-md ${isActive ? 'bg-emerald-50 dark:bg-emerald-900/20' : 'hover:bg-emerald-50 dark:hover:bg-emerald-900/20'}`}>
-                                  <child.Icon className="h-4 w-4 opacity-80" />
+                                  <child.Icon className="h-5 w-5 opacity-80" />
                                   <span className="truncate text-sm">{t(child.label)}</span>
                                 </div>
                               )}
