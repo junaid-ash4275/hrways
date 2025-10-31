@@ -27,6 +27,12 @@ export async function sendOtpEmail(to: string, otp: string) {
     console.log(`[DEV] OTP for ${to}: ${otp}`)
     return
   }
-  await tx.sendMail({ from: env.MAIL_FROM, to, subject, text, html })
+  try {
+    await tx.sendMail({ from: env.MAIL_FROM, to, subject, text, html })
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn(`[DEV] SMTP send failed. Falling back to console OTP.`, err)
+    // eslint-disable-next-line no-console
+    console.log(`[DEV] OTP for ${to}: ${otp}`)
+  }
 }
-

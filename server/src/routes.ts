@@ -545,7 +545,7 @@ routes.put('/meetings/:id', authGuard('HR'), async (req, res, next) => {
 });
 
 // HRW-MEET-2 (cancel subset): Cancel a meeting -> set status = 'CANCELLED'
-routes.delete('/meetings/:id', authGuard('HR'), async (req, res, next) => {
+  routes.delete('/meetings/:id', authGuard('HR'), async (req, res, next) => {
   try {
     const id = (req.params.id || '').toString().trim();
     const uuidRe = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/;
@@ -581,7 +581,198 @@ routes.delete('/meetings/:id', authGuard('HR'), async (req, res, next) => {
     } catch {}
     res.json(upd.rows[0]);
   } catch (e) { next(e) }
-});
+  });
+
+  // HRW-PAY-1: Execute payroll run for a month and generate payslips
+  routes.get('/payroll/runs', authGuard('HR'), async (req, res, next) => {
+    try {
+      const page = Math.max(1, Number(req.query.page || 1) || 1);
+      const pageSizeRaw = Number(req.query.pageSize || 10) || 10;
+      const pageSize = Math.max(1, Math.min(100, pageSizeRaw));
+      const offset = (page - 1) * pageSize;
+
+      const where: string[] = [];
+      const params: any[] = [];
+      let pi = 1;
+      const status = (req.query.status || '').toString().trim().toUpperCase();
+      if (status && ['PENDING','COMPLETED','FAILED'].includes(status)) {
+        where.push(`status = $${pi++}`); params.push(status);
+      }
+      const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+
+      const total = (await pool.query(`SELECT COUNT(*)::int AS c FROM payroll_runs ${whereSql}`, params)).rows[0]?.c || 0;
+
+      const rows = (await pool.query(
+        `SELECT pr.id, pr.run_month, pr.status, pr.created_at,
+                COALESCE(SUM(ps.gross),0)::numeric(12,2) AS total_gross,
+                COALESCE(SUM(ps.net),0)::numeric(12,2) AS total_net,
+                COUNT(ps.id)::int AS payslip_count
+           FROM payroll_runs pr
+           LEFT JOIN payslips ps ON ps.payroll_run_id = pr.id
+           ${whereSql}
+          GROUP BY pr.id
+          ORDER BY pr.run_month DESC
+          LIMIT $${pi} OFFSET $${pi + 1}`,
+        [...params, pageSize, offset]
+      )).rows;
+
+      return res.json({ data: rows, page, pageSize, total });
+    } catch (e) { next(e) }
+  });
+
+  routes.post('/payroll/runs', authGuard('HR'), async (req, res, next) => {
+    const client = await pool.connect();
+    try {
+      const monthRaw = (req.body?.month || req.body?.run_month || '').toString().trim();
+      if (!monthRaw) {
+        return res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'month (YYYY-MM) is required' } });
+      }
+      let runMonth: Date | null = null;
+      // Accept YYYY-MM or full ISO, normalize to first of month UTC
+      if (/^\d{4}-\d{2}$/.test(monthRaw)) {
+        runMonth = new Date(`${monthRaw}-01T00:00:00.000Z`);
+      } else {
+        const d = new Date(monthRaw);
+        if (!isNaN(d.getTime())) {
+          runMonth = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1));
+        }
+      }
+      if (!runMonth || isNaN(runMonth.getTime())) {
+        return res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'month must be YYYY-MM or ISO date' } });
+      }
+      const runMonthStr = runMonth.toISOString().slice(0,10); // YYYY-MM-01
+
+      await client.query('BEGIN');
+
+      // Idempotent: return existing run if present
+      const existing = await client.query('SELECT id, run_month, status FROM payroll_runs WHERE run_month = $1', [runMonthStr]);
+      let runId: string;
+      if (existing.rowCount > 0) {
+        runId = existing.rows[0].id;
+      } else {
+        const userId = (req as any).user?.id as string | undefined;
+        // Insert with optional created_by column depending on schema
+        const cols = await client.query(`SELECT column_name FROM information_schema.columns WHERE table_schema='public' AND table_name='payroll_runs'`);
+        const hasCreatedBy = cols.rows.some((r: any) => r.column_name === 'created_by');
+        if (hasCreatedBy) {
+          const ins = await client.query('INSERT INTO payroll_runs(run_month, status, created_by) VALUES ($1, $2, $3) RETURNING id', [runMonthStr, 'PENDING', userId || null]);
+          runId = ins.rows[0].id;
+        } else {
+          const ins = await client.query('INSERT INTO payroll_runs(run_month, status) VALUES ($1, $2) RETURNING id', [runMonthStr, 'PENDING']);
+          runId = ins.rows[0].id;
+        }
+      }
+
+      // Generate payslips for ACTIVE employees with a salary profile effective on/before runMonth
+      const employees = await client.query("SELECT id, employee_code, name, email FROM employees WHERE status = 'ACTIVE'");
+      let created = 0;
+      for (const e of employees.rows) {
+        const prof = await client.query(
+          'SELECT base, allowances, deductions FROM salary_profiles WHERE employee_id = $1 AND effective_from <= $2 ORDER BY effective_from DESC LIMIT 1',
+          [e.id, runMonthStr]
+        );
+        if (prof.rowCount === 0) continue; // no profile, skip
+        const { base, allowances, deductions } = prof.rows[0];
+        const gross = Number(base) + Number(allowances || 0);
+        const net = Math.max(0, gross - Number(deductions || 0));
+        const breakdown = { base: Number(base), allowances: Number(allowances || 0), deductions: Number(deductions || 0) };
+        await client.query(
+          `INSERT INTO payslips(payroll_run_id, employee_id, gross, net, breakdown)
+           VALUES ($1, $2, $3, $4, $5::jsonb)
+           ON CONFLICT (payroll_run_id, employee_id) DO UPDATE SET gross = EXCLUDED.gross, net = EXCLUDED.net, breakdown = EXCLUDED.breakdown`,
+          [runId, e.id, gross, net, JSON.stringify(breakdown)]
+        );
+        created++;
+      }
+
+      await client.query("UPDATE payroll_runs SET status = 'COMPLETED' WHERE id = $1", [runId]);
+      await client.query('COMMIT');
+
+      const out = await pool.query(
+        `SELECT pr.id, pr.run_month, pr.status, pr.created_at,
+                COALESCE(SUM(ps.gross),0)::numeric(12,2) AS total_gross,
+                COALESCE(SUM(ps.net),0)::numeric(12,2) AS total_net,
+                COUNT(ps.id)::int AS payslip_count
+           FROM payroll_runs pr
+           LEFT JOIN payslips ps ON ps.payroll_run_id = pr.id
+          WHERE pr.id = $1
+          GROUP BY pr.id`,
+        [runId]
+      );
+      return res.status(existing.rowCount > 0 ? 200 : 201).json({ ...out.rows[0], created });
+    } catch (e) {
+      try { await client.query('ROLLBACK'); } catch {}
+      next(e);
+    } finally {
+      client.release();
+    }
+  });
+
+  routes.get('/payroll/runs/:id/payslips', authGuard('HR'), async (req, res, next) => {
+    try {
+      const id = (req.params.id || '').toString().trim();
+      const uuidRe = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/;
+      if (!uuidRe.test(id)) return res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'Invalid payroll run id' } });
+
+      const page = Math.max(1, Number(req.query.page || 1) || 1);
+      const pageSizeRaw = Number(req.query.pageSize || 10) || 10;
+      const pageSize = Math.max(1, Math.min(200, pageSizeRaw));
+      const offset = (page - 1) * pageSize;
+
+      const total = (await pool.query('SELECT COUNT(*)::int AS c FROM payslips WHERE payroll_run_id = $1', [id])).rows[0]?.c || 0;
+      const rows = (await pool.query(
+        `SELECT ps.id, ps.gross, ps.net, ps.breakdown, e.employee_code, e.name, e.email
+           FROM payslips ps
+           JOIN employees e ON e.id = ps.employee_id
+          WHERE ps.payroll_run_id = $1
+          ORDER BY e.name ASC
+          LIMIT $2 OFFSET $3`,
+        [id, pageSize, offset]
+      )).rows;
+      return res.json({ data: rows, page, pageSize, total });
+    } catch (e) { next(e) }
+  });
+
+  // HRW-PAY-1 helper: upsert salary profile (latest effective_from wins)
+  routes.post('/payroll/salary-profiles', authGuard('HR'), async (req, res, next) => {
+    try {
+      const b = req.body || {};
+      const employeeId = (b.employee_id || '').toString().trim();
+      const base = Number(b.base);
+      const allowances = Number(b.allowances || 0);
+      const deductions = Number(b.deductions || 0);
+      const effRaw = (b.effective_from || b.effectiveFrom || '').toString().trim();
+      const uuidRe = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/;
+
+      const errors: string[] = [];
+      if (!uuidRe.test(employeeId)) errors.push('employee_id must be a valid UUID');
+      if (!Number.isFinite(base) || base < 0) errors.push('base must be a non-negative number');
+      if (!Number.isFinite(allowances) || allowances < 0) errors.push('allowances must be a non-negative number');
+      if (!Number.isFinite(deductions) || deductions < 0) errors.push('deductions must be a non-negative number');
+      let eff: Date | null = null;
+      if (/^\d{4}-\d{2}$/.test(effRaw)) eff = new Date(`${effRaw}-01T00:00:00.000Z`);
+      else {
+        const d = new Date(effRaw); if (!isNaN(d.getTime())) eff = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1));
+      }
+      if (!eff) errors.push('effective_from must be YYYY-MM or ISO date');
+
+      if (errors.length) return res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'Invalid salary profile', details: errors } });
+      const effStr = eff!.toISOString().slice(0,10);
+
+      // Ensure employee exists
+      const emp = await pool.query('SELECT 1 FROM employees WHERE id = $1', [employeeId]);
+      if (emp.rowCount === 0) return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Employee not found' } });
+
+      await pool.query(
+        `INSERT INTO salary_profiles(employee_id, base, allowances, deductions, effective_from)
+         VALUES ($1, $2, $3, $4, $5)
+         ON CONFLICT (employee_id, effective_from)
+         DO UPDATE SET base = EXCLUDED.base, allowances = EXCLUDED.allowances, deductions = EXCLUDED.deductions`,
+        [employeeId, base, allowances, deductions, effStr]
+      );
+      return res.status(201).json({ ok: true });
+    } catch (e) { next(e) }
+  });
 
 // HRW-ATT-1: Record Attendance
 routes.post('/attendance', authGuard('HR'), async (req, res, next) => {
@@ -1373,11 +1564,12 @@ routes.delete('/employees/:id/documents/:docId', authGuard('HR'), async (req, re
 
 // HRW-RESET-1: Request password reset (OTP)
 routes.post('/auth/request-reset', async (req, res, next) => {
+  // Always 202 to avoid user enumeration; perform work best-effort afterwards
+  const email = (req.body?.email || '').toString().trim().toLowerCase()
+  res.status(202).json({ ok: true })
+
+  if (!email) return
   try {
-    const email = (req.body?.email || '').toString().trim().toLowerCase()
-    // Always 202 to avoid user enumeration
-    res.status(202).json({ ok: true })
-    if (!email) return
     const { rows } = await pool.query('SELECT id FROM users WHERE email = $1', [email])
     if (rows.length === 0) return
     const userId = rows[0].id as string
@@ -1394,7 +1586,8 @@ routes.post('/auth/request-reset', async (req, res, next) => {
     // Send the OTP email (or console log if SMTP not set)
     await sendOtpEmail(email, otp)
   } catch (e) {
-    next(e)
+    // Do not call next() after responding; just log
+    console.error('Password reset request processing failed:', e)
   }
 })
 
