@@ -34,7 +34,7 @@ hrways/
 - **Notifications**: In-app (global store slice + server events).
 - **Search/Filter**: Server-backed queries; client issues debounced requests.
 - **Exports**: CSV/PDF generation handled server-side.
-- **Theming**: Light/Dark via Tailwind class strategy + localStorage persistence.
+- **Theming**: Light/Dark via Tailwind class strategy + localStorage persistence; brand gradient variant (`brandVariant`) applied via a root class or CSS variables.
 
 ### Create Apps
 - **Preferred (Vite + TS):**
@@ -70,7 +70,12 @@ npm i -D tailwindcss postcss autoprefixer && npx tailwindcss init -p
     plugins: [],
   }
   ```
-- Primary brand utility: `bg-gradient-to-br from-emerald-500 via-teal-500 to-cyan-500`.
+- Brand gradients utilities (examples):
+  - emerald: `bg-gradient-to-br from-emerald-500 via-teal-500 to-cyan-500`
+  - blue: `bg-gradient-to-br from-sky-500 via-blue-500 to-indigo-500`
+  - orange: `bg-gradient-to-br from-amber-500 via-orange-500 to-red-500`
+  - violet: `bg-gradient-to-br from-fuchsia-500 via-violet-500 to-purple-500`
+  - rose: `bg-gradient-to-br from-rose-500 via-pink-500 to-rose-700`
 
 ---
 
@@ -107,7 +112,7 @@ Modules:
 
 ### Model (Conceptual)
 - **Roles**: `ADMIN`, `HR`.
-- **User**: email, password_hash, profile, preferences (theme, locale).
+- **User**: email, password_hash, profile, preferences (theme, brandVariant, locale).
 - **Notification**: id, type, message, read, user_id, created_at.
 - **Search**: shared query DTO: `q`, `filters`, `pagination`.
 
@@ -117,7 +122,7 @@ Modules:
 - Search endpoints per resource with pagination and filter parsing.
 - Export generators for each resource (CSV/PDF/ZIP where applicable).
 - Notifications list, mark-read, mark-all-read.
-- Preferences read/update (theme, etc.).
+- Preferences read/update (theme mode and brandVariant, etc.).
 
 ### Data (Conceptual)
 - Entities: `User`, `Notification`.

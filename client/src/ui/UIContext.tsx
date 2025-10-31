@@ -46,14 +46,14 @@ export function UIProvider({ children }: { children: React.ReactNode }) {
             role={t.type === 'error' ? 'alert' : 'status'}
             aria-live={t.type === 'error' ? 'assertive' : 'polite'}
             className={`min-w-[260px] max-w-sm rounded-lg border shadow-lg px-4 py-3 text-sm backdrop-blur
-              ${t.type === 'success' ? 'bg-white/80 dark:bg-neutral-800/80 border-emerald-300 dark:border-emerald-800' : ''}
+              ${t.type === 'success' ? 'bg-white/80 dark:bg-neutral-800/80 brand-border-soft ' : ''}
               ${t.type === 'error' ? 'bg-white/80 dark:bg-neutral-800/80 border-red-300 dark:border-red-800' : ''}
               ${t.type === 'info' ? 'bg-white/80 dark:bg-neutral-800/80 border-gray-300 dark:border-neutral-700' : ''}
             `}
           >
             <div className="flex items-start gap-3">
               <div className={`h-2.5 w-2.5 mt-1.5 rounded-full flex-shrink-0
-                ${t.type === 'success' ? 'bg-emerald-500' : ''}
+                ${t.type === 'success' ? 'brand-badge' : ''}
                 ${t.type === 'error' ? 'bg-red-500' : ''}
                 ${t.type === 'info' ? 'bg-gray-500' : ''}
               `} />
@@ -79,3 +79,5 @@ export function useUI() {
   if (!ctx) throw new Error('useUI must be used within UIProvider')
   return ctx
 }
+
+

@@ -184,7 +184,7 @@ export default function Dashboard() {
                   <ul className="space-y-2" role="list">
                     {items.map((a) => (
                       <li key={`${a.kind}:${a.ref}:${a.at}`} role="listitem" className="relative">
-                        <Link to={a.link} className="group flex items-start gap-3 rounded-xl border border-gray-200 dark:border-neutral-800 bg-white dark:bg-neutral-800 px-4 py-3 shadow-sm hover:shadow transition focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                        <Link to={a.link} className="group flex items-start gap-3 rounded-xl border border-gray-200 dark:border-neutral-800 bg-white dark:bg-neutral-800 px-4 py-3 shadow-sm hover:shadow transition focus:outline-none focus:ring-2 brand-ring">
                           <TimelineDot kind={a.kind} />
                           <div className="min-w-0 flex-1">
                             <div className="text-sm">
@@ -216,11 +216,11 @@ function KpiCard({ title, value, icon, tint, to, delta }: { title: string; value
     <div className="rounded-xl border border-gray-200 dark:border-neutral-800 p-4 bg-white dark:bg-neutral-800 shadow-sm hover:shadow transition">
       <div className="flex items-start justify-between">
         <div className="flex items-center gap-3">
-          <div className={`h-8 w-8 rounded-full bg-gradient-to-br ${tint} flex items-center justify-center text-emerald-700 dark:text-emerald-300`}>{icon}</div>
+          <div className={`h-8 w-8 rounded-full bg-gradient-to-br ${tint} flex items-center justify-center brand-text`}>{icon}</div>
           <div className="text-xs uppercase tracking-wide opacity-70">{title}</div>
         </div>
         {delta && (
-          <div className={`flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border ${delta.value >= 0 ? 'text-emerald-700 dark:text-emerald-300 border-emerald-300/40' : 'text-red-600 dark:text-red-400 border-red-300/40'}`}>
+          <div className={`flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border ${delta.value >= 0 ? 'brand-text brand-border-soft' : 'text-red-600 dark:text-red-400 border-red-300/40'}`}>
             {delta.value >= 0 ? <ArrowTrendingUpIcon className="h-3.5 w-3.5" /> : <ArrowTrendingDownIcon className="h-3.5 w-3.5" />}
             <span>{formatNumber(Math.abs(delta.value))}%</span>
             {delta.period && <span className="opacity-70">{delta.period}</span>}
@@ -231,7 +231,7 @@ function KpiCard({ title, value, icon, tint, to, delta }: { title: string; value
     </div>
   )
   return to ? (
-    <Link to={to} role="listitem" className="focus:outline-none focus:ring-2 focus:ring-emerald-500 rounded-xl">{content}</Link>
+    <Link to={to} role="listitem" className="focus:outline-none focus:ring-2 brand-ring rounded-xl">{content}</Link>
   ) : (
     <div role="listitem">{content}</div>
   )
@@ -311,7 +311,7 @@ function groupByDay(items: ActivityItem[]) {
 }
 
 function TimelineDot({ kind }: { kind: string }) {
-  const color = kind === 'EMPLOYEE' ? 'bg-emerald-500' : kind === 'LEAVE' ? 'bg-amber-500' : kind === 'MEETING' ? 'bg-indigo-500' : 'bg-cyan-500'
+  const color = kind === 'EMPLOYEE' ? 'brand-badge' : kind === 'LEAVE' ? 'bg-amber-500' : kind === 'MEETING' ? 'bg-indigo-500' : 'bg-cyan-500'
   return <span className={`mt-1 h-2.5 w-2.5 rounded-full ${color} shadow`} aria-hidden="true" />
 }
 
@@ -472,4 +472,6 @@ function formatTime(iso: string) {
   const d = new Date(iso)
   return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
 }
+
+
 

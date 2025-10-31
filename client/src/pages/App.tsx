@@ -15,6 +15,17 @@ export default function App() {
     } else {
       document.documentElement.classList.remove('dark')
     }
+    // Apply brand variant from local storage first
+    const applyBrand = (v?: string) => {
+      const root = document.documentElement
+      const all = ['brand-emerald','brand-blue','brand-orange','brand-violet','brand-rose']
+      all.forEach((c) => root.classList.remove(c))
+      const key = (v || 'emerald').toLowerCase()
+      const cls = `brand-${key}`
+      if (all.includes(cls)) root.classList.add(cls)
+    }
+    const lsBrand = localStorage.getItem('brandVariant') || 'emerald'
+    applyBrand(lsBrand)
     // Apply text size from local storage first
     const lsScale = Number(localStorage.getItem('textScale') || 100)
     if (Number.isFinite(lsScale)) {
@@ -36,6 +47,11 @@ export default function App() {
             if (theme === 'dark') document.documentElement.classList.add('dark')
             else document.documentElement.classList.remove('dark')
             localStorage.setItem('theme', theme)
+          }
+          const brand = prefs?.brandVariant
+          if (typeof brand === 'string' && brand) {
+            localStorage.setItem('brandVariant', brand)
+            applyBrand(brand)
           }
           const textScale = Number(prefs?.textScale)
           if (Number.isFinite(textScale) && textScale >= 90 && textScale <= 120) {

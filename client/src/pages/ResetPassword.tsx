@@ -34,9 +34,9 @@ export default function ResetPassword() {
   if (!resetToken) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-neutral-900 text-gray-900 dark:text-gray-100 p-6">
-        <div className="w-full max-w-md bg-white dark:bg-neutral-800 rounded-2xl p-8 shadow-xl border border-emerald-100/50 dark:border-neutral-700">
+        <div className="w-full max-w-md bg-white dark:bg-neutral-800 rounded-2xl p-8 shadow-xl border brand-border-soft dark:border-neutral-700">
           <h1 className="text-xl font-semibold mb-2">Reset password</h1>
-          <p className="text-sm opacity-80">Your reset session has expired. Please <a href="/forgot-password" className="underline text-emerald-700 dark:text-emerald-400">request a new code</a>.</p>
+          <p className="text-sm opacity-80">Your reset session has expired. Please <a href="/forgot-password" className="underline brand-text">request a new code</a>.</p>
         </div>
       </div>
     )
@@ -44,7 +44,7 @@ export default function ResetPassword() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-neutral-900 text-gray-900 dark:text-gray-100 p-6">
-      <form onSubmit={onSubmit} className="w-full max-w-md bg-white dark:bg-neutral-800 rounded-2xl p-8 shadow-xl border border-emerald-100/50 dark:border-neutral-700">
+      <form onSubmit={onSubmit} className="w-full max-w-md bg-white dark:bg-neutral-800 rounded-2xl p-8 shadow-xl border brand-border-soft dark:border-neutral-700">
         <h1 className="text-xl font-semibold mb-2">Set a new password</h1>
         {email && <p className="text-sm opacity-80 mb-4">Account: {email}</p>}
         <label className="block text-sm mb-1" htmlFor="pw1">New password</label>
@@ -60,4 +60,5 @@ export default function ResetPassword() {
     </div>
   )
 }
+
 

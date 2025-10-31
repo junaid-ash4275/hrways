@@ -91,7 +91,7 @@ export default function Login() {
 
       {/* Right auth card */}
       <div className="flex items-center justify-center p-6 md:p-12 bg-gray-50 dark:bg-neutral-900 text-gray-900 dark:text-gray-100">
-        <form onSubmit={onSubmit} className="w-full max-w-md bg-white dark:bg-neutral-800 rounded-2xl p-8 shadow-xl border border-emerald-100/50 dark:border-neutral-700">
+        <form onSubmit={onSubmit} className="w-full max-w-md bg-white dark:bg-neutral-800 rounded-2xl p-8 shadow-xl border brand-border-soft dark:border-neutral-700">
           <div className="flex items-center gap-3 mb-6">
             <img src={logoUrl} alt="HRWays" className="h-7 w-7" />
             <h1 className="text-xl font-semibold">Sign in to HRWays</h1>
@@ -102,17 +102,19 @@ export default function Login() {
             </div>
           )}
           <label className="block text-sm mb-1" htmlFor="email">Email</label>
-          <input id="email" type="email" className="w-full mb-4 px-3 py-2 rounded-lg border border-gray-300 dark:border-neutral-700 bg-transparent focus:outline-none focus:ring-2 focus:ring-emerald-500" value={email} onChange={(e) => setEmail(e.target.value)} required />
+          <input id="email" type="email" className="w-full mb-4 px-3 py-2 rounded-lg border border-gray-300 dark:border-neutral-700 bg-transparent focus:outline-none focus:ring-2 brand-ring" value={email} onChange={(e) => setEmail(e.target.value)} required />
           <label className="block text-sm mb-1" htmlFor="password">Password</label>
-          <input id="password" type="password" className="w-full mb-6 px-3 py-2 rounded-lg border border-gray-300 dark:border-neutral-700 bg-transparent focus:outline-none focus:ring-2 focus:ring-emerald-500" value={password} onChange={(e) => setPassword(e.target.value)} required />
+          <input id="password" type="password" className="w-full mb-6 px-3 py-2 rounded-lg border border-gray-300 dark:border-neutral-700 bg-transparent focus:outline-none focus:ring-2 brand-ring" value={password} onChange={(e) => setPassword(e.target.value)} required />
           <button disabled={loading} className="w-full px-4 py-2 rounded-lg brand-gradient text-white shadow hover:opacity-95 disabled:opacity-60 transition">
             {loading ? 'Signing in…' : 'Sign in'}
           </button>
           <div className="mt-4 text-sm text-center">
-            <a href="/forgot-password" className="text-emerald-700 dark:text-emerald-400 underline">Forgot password?</a>
+            <a href="/forgot-password" className="brand-text underline">Forgot password?</a>
           </div>
         </form>
       </div>
     </div>
   )
 }
+
+

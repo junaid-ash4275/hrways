@@ -188,12 +188,12 @@ export default function Attendance() {
               placeholder="Search name, email, code"
               value={selected ? `${selected.employee_code} — ${selected.name}` : q}
               onChange={(e) => { setSelected(null); setQ(e.target.value) }}
-              className="w-full px-3 py-2 rounded border border-gray-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              className="w-full px-3 py-2 rounded border border-gray-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 focus:outline-none focus:ring-2 brand-ring"
             />
             {!selected && empOptions.length > 0 && (
               <ul className="mt-1 rounded border border-gray-200 dark:border-neutral-700 divide-y divide-gray-200 dark:divide-neutral-800 max-h-40 overflow-auto bg-white dark:bg-neutral-900">
                 {empOptions.map((e) => (
-                  <li key={e.id} className="px-3 py-2 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 cursor-pointer" onClick={() => { setSelected(e); setQ('') }}>
+                  <li key={e.id} className="px-3 py-2 brand-hover cursor-pointer" onClick={() => { setSelected(e); setQ('') }}>
                     <div className="font-medium text-sm">{e.name} <span className="opacity-60">({e.employee_code})</span></div>
                     <div className="text-xs opacity-70">{e.email}</div>
                   </li>
@@ -263,13 +263,13 @@ export default function Attendance() {
                 placeholder="Search employee for history"
                 value={reviewSelected ? `${reviewSelected.employee_code} — ${reviewSelected.name}` : reviewQ}
                 onChange={(e) => { setReviewSelected(null); setReviewQ(e.target.value) }}
-                className="pl-8 pr-2 py-1 rounded border border-gray-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                className="pl-8 pr-2 py-1 rounded border border-gray-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 focus:outline-none focus:ring-2 brand-ring"
                 style={{ minWidth: 280 }}
               />
               {!reviewSelected && reviewOptions.length > 0 && (
                 <ul className="absolute z-10 mt-1 max-h-48 overflow-auto rounded border border-gray-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 divide-y divide-gray-200 dark:divide-neutral-800">
                   {reviewOptions.map((e) => (
-                    <li key={e.id} className="px-3 py-2 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 cursor-pointer" onClick={() => { setReviewSelected(e); setReviewQ('') }}>
+                    <li key={e.id} className="px-3 py-2 brand-hover cursor-pointer" onClick={() => { setReviewSelected(e); setReviewQ('') }}>
                       <div className="font-medium text-sm">{e.name} <span className="opacity-60">({e.employee_code})</span></div>
                       <div className="text-xs opacity-70">{e.email}</div>
                     </li>
@@ -315,8 +315,8 @@ export default function Attendance() {
               </button>
               {exportOpen && (
                 <div className="absolute right-0 mt-1 w-40 rounded-md border border-gray-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-lg">
-                  <button onClick={() => { setExportOpen(false); exportCsv() }} className="block w-full text-left px-3 py-2 hover:bg-emerald-50 dark:hover:bg-emerald-900/20">Export CSV</button>
-                  <button onClick={() => { setExportOpen(false); exportPdf() }} className="block w-full text-left px-3 py-2 hover:bg-emerald-50 dark:hover:bg-emerald-900/20">Export PDF</button>
+                  <button onClick={() => { setExportOpen(false); exportCsv() }} className="block w-full text-left px-3 py-2 brand-hover">Export CSV</button>
+                  <button onClick={() => { setExportOpen(false); exportPdf() }} className="block w-full text-left px-3 py-2 brand-hover">Export PDF</button>
                 </div>
               )}
             </div>
@@ -342,7 +342,7 @@ export default function Attendance() {
                 const end = (r.end_date || '').slice(0,10)
                 const dateCell = r.days && r.days > 1 && end ? `${start} - ${end}` : start
                 return (
-                  <tr key={`${r.employee_id}-${start}-${end || ''}-${r.status}`} className="border-b border-gray-100 dark:border-neutral-800 hover:bg-emerald-50/40 dark:hover:bg-emerald-900/10">
+                  <tr key={`${r.employee_id}-${start}-${end || ''}-${r.status}`} className="border-b border-gray-100 dark:border-neutral-800 brand-hover-subtle">
                     <td className="py-2 pr-3 whitespace-nowrap font-medium">{r.employee_code} — {r.name}</td>
                     <td className="py-2 pr-3">{dateCell || '-'}</td>
                     <td className="py-2 pr-3">{r.status}</td>
@@ -356,3 +356,4 @@ export default function Attendance() {
     </section>
   )
 }
+

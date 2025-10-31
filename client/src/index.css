@@ -12,3 +12,77 @@
 .brand-gradient {
   @apply bg-gradient-to-br from-emerald-500 via-teal-500 to-cyan-500;
 }
+
+/* Brand variants applied via a root class on <html> */
+.brand-emerald .brand-gradient {
+  @apply bg-gradient-to-br from-emerald-500 via-teal-500 to-cyan-500;
+}
+.brand-blue .brand-gradient {
+  @apply bg-gradient-to-br from-sky-500 via-blue-500 to-indigo-500;
+}
+.brand-orange .brand-gradient {
+  @apply bg-gradient-to-br from-amber-500 via-orange-500 to-red-500;
+}
+.brand-violet .brand-gradient {
+  @apply bg-gradient-to-br from-fuchsia-500 via-violet-500 to-purple-500;
+}
+.brand-rose .brand-gradient {
+  @apply bg-gradient-to-br from-rose-500 via-pink-500 to-rose-700;
+}
+
+/* Brand-aware utility classes */
+.brand-text { @apply text-emerald-700 dark:text-emerald-300; }
+.brand-border-soft { @apply border-emerald-300/40; }
+.brand-badge { @apply bg-emerald-600 text-white; }
+.brand-ring:focus { @apply ring-emerald-500; }
+
+.brand-emerald .brand-text { @apply text-emerald-700 dark:text-emerald-300; }
+.brand-emerald .brand-border-soft { @apply border-emerald-300/40; }
+.brand-emerald .brand-badge { @apply bg-emerald-600; }
+.brand-emerald .brand-ring:focus { @apply ring-emerald-500; }
+
+.brand-blue .brand-text { @apply text-blue-700 dark:text-blue-300; }
+.brand-blue .brand-border-soft { @apply border-blue-300/40; }
+.brand-blue .brand-badge { @apply bg-blue-600; }
+.brand-blue .brand-ring:focus { @apply ring-blue-500; }
+
+.brand-orange .brand-text { @apply text-orange-700 dark:text-orange-300; }
+.brand-orange .brand-border-soft { @apply border-orange-300/40; }
+.brand-orange .brand-badge { @apply bg-orange-600; }
+.brand-orange .brand-ring:focus { @apply ring-orange-500; }
+
+.brand-violet .brand-text { @apply text-violet-700 dark:text-violet-300; }
+.brand-violet .brand-border-soft { @apply border-violet-300/40; }
+.brand-violet .brand-badge { @apply bg-violet-600; }
+.brand-violet .brand-ring:focus { @apply ring-violet-500; }
+
+.brand-rose .brand-text { @apply text-rose-700 dark:text-rose-300; }
+.brand-rose .brand-border-soft { @apply border-rose-300/40; }
+.brand-rose .brand-badge { @apply bg-rose-600; }
+.brand-rose .brand-ring:focus { @apply ring-rose-500; }
+
+/* Hover/open surface helpers */
+.brand-hover { @apply hover:bg-emerald-50 dark:hover:bg-emerald-900/20; }
+.brand-open { @apply bg-emerald-50 dark:bg-emerald-900/20; }
+.brand-hover-subtle { @apply hover:bg-emerald-50/40 dark:hover:bg-emerald-900/10; }
+.brand-accent { @apply accent-emerald-600; }
+
+.brand-blue .brand-hover { @apply hover:bg-blue-50 dark:hover:bg-blue-900/20; }
+.brand-blue .brand-open { @apply bg-blue-50 dark:bg-blue-900/20; }
+.brand-blue .brand-hover-subtle { @apply hover:bg-blue-50/40 dark:hover:bg-blue-900/10; }
+.brand-blue .brand-accent { @apply accent-blue-600; }
+
+.brand-orange .brand-hover { @apply hover:bg-orange-50 dark:hover:bg-orange-900/20; }
+.brand-orange .brand-open { @apply bg-orange-50 dark:bg-orange-900/20; }
+.brand-orange .brand-hover-subtle { @apply hover:bg-orange-50/40 dark:hover:bg-orange-900/10; }
+.brand-orange .brand-accent { @apply accent-orange-600; }
+
+.brand-violet .brand-hover { @apply hover:bg-violet-50 dark:hover:bg-violet-900/20; }
+.brand-violet .brand-open { @apply bg-violet-50 dark:bg-violet-900/20; }
+.brand-violet .brand-hover-subtle { @apply hover:bg-violet-50/40 dark:hover:bg-violet-900/10; }
+.brand-violet .brand-accent { @apply accent-violet-600; }
+
+.brand-rose .brand-hover { @apply hover:bg-rose-50 dark:hover:bg-rose-900/20; }
+.brand-rose .brand-open { @apply bg-rose-50 dark:bg-rose-900/20; }
+.brand-rose .brand-hover-subtle { @apply hover:bg-rose-50/40 dark:hover:bg-rose-900/10; }
+.brand-rose .brand-accent { @apply accent-rose-600; }
